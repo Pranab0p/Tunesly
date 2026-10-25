@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -27,28 +28,58 @@ data class TuneslyCloudTrack(
 )
 
 object TuneslyCloudManager {
-    private const val BASE_URL = "http://194.127.179.229:5050/api"
+    // Both Direct IP and SSL Nginx reverse proxy
+    private val BASE_URLS = listOf(
+        "http://194.127.179.229:5050/api",
+        "https://vibestudio.blog/tunesly/api",
+    )
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
     val isLoggedIn: Boolean
         get() = AppSettings.tuneslyToken.value.isNotBlank()
 
+    private inline fun <T> executeRequest(
+        endpoint: String,
+        builder: (String) -> Request,
+        parser: (Response, JSONObject) -> Result<T>,
+    ): Result<T> {
+        var lastException: Exception? = null
+        for (baseUrl in BASE_URLS) {
+            try {
+                val req = builder("$baseUrl$endpoint")
+                val resp = Http.client.newCall(req).execute()
+                resp.use {
+                    val body = it.body?.string().orEmpty()
+                    val json = try {
+                        JSONObject(body)
+                    } catch (_: Exception) {
+                        JSONObject()
+                    }
+                    return parser(it, json)
+                }
+            } catch (e: Exception) {
+                lastException = e
+            }
+        }
+        return Result.failure(lastException ?: Exception("Network error connecting to Tunesly VPS"))
+    }
+
     suspend fun register(username: String, email: String, password: String): Result<TuneslyUser> =
         withContext(Dispatchers.IO) {
-            try {
-                val json = JSONObject().apply {
-                    put("username", username.trim())
-                    put("email", email.trim())
-                    put("password", password)
-                }
-                val req = Request.Builder()
-                    .url("$BASE_URL/auth/register")
-                    .post(json.toString().toRequestBody(JSON_MEDIA))
-                    .build()
-
-                Http.client.newCall(req).execute().use { resp ->
-                    val body = resp.body?.string().orEmpty()
-                    val resJson = JSONObject(body)
+            val json = JSONObject().apply {
+                put("username", username.trim())
+                put("email", email.trim())
+                put("password", password)
+            }
+            executeRequest(
+                "/auth/register",
+                builder = { url ->
+                    Request.Builder()
+                        .url(url)
+                        .post(json.toString().toRequestBody(JSON_MEDIA))
+                        .build()
+                },
+                parser = { resp, resJson ->
                     if (resp.isSuccessful && resJson.optBoolean("success")) {
                         val token = resJson.getString("token")
                         val userObj = resJson.getJSONObject("user")
@@ -63,27 +94,25 @@ object TuneslyCloudManager {
                         val err = resJson.optString("error", "Registration failed (${resp.code})")
                         Result.failure(Exception(err))
                     }
-                }
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+                },
+            )
         }
 
     suspend fun login(login: String, password: String): Result<TuneslyUser> =
         withContext(Dispatchers.IO) {
-            try {
-                val json = JSONObject().apply {
-                    put("login", login.trim())
-                    put("password", password)
-                }
-                val req = Request.Builder()
-                    .url("$BASE_URL/auth/login")
-                    .post(json.toString().toRequestBody(JSON_MEDIA))
-                    .build()
-
-                Http.client.newCall(req).execute().use { resp ->
-                    val body = resp.body?.string().orEmpty()
-                    val resJson = JSONObject(body)
+            val json = JSONObject().apply {
+                put("login", login.trim())
+                put("password", password)
+            }
+            executeRequest(
+                "/auth/login",
+                builder = { url ->
+                    Request.Builder()
+                        .url(url)
+                        .post(json.toString().toRequestBody(JSON_MEDIA))
+                        .build()
+                },
+                parser = { resp, resJson ->
                     if (resp.isSuccessful && resJson.optBoolean("success")) {
                         val token = resJson.getString("token")
                         val userObj = resJson.getJSONObject("user")
@@ -99,10 +128,8 @@ object TuneslyCloudManager {
                         val err = resJson.optString("error", "Login failed (${resp.code})")
                         Result.failure(Exception(err))
                     }
-                }
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+                },
+            )
         }
 
     fun logout() {
@@ -128,15 +155,20 @@ object TuneslyCloudManager {
                 put("playedSeconds", playedSeconds)
                 put("artworkUrl", artworkUrl)
             }
-            val req = Request.Builder()
-                .url("$BASE_URL/history/log")
-                .addHeader("Authorization", "Bearer $token")
-                .post(json.toString().toRequestBody(JSON_MEDIA))
-                .build()
-
-            Http.client.newCall(req).execute().use { resp ->
-                resp.isSuccessful
-            }
+            val result = executeRequest(
+                "/history/log",
+                builder = { url ->
+                    Request.Builder()
+                        .url(url)
+                        .addHeader("Authorization", "Bearer $token")
+                        .post(json.toString().toRequestBody(JSON_MEDIA))
+                        .build()
+                },
+                parser = { resp, _ ->
+                    Result.success(resp.isSuccessful)
+                },
+            )
+            result.getOrDefault(false)
         } catch (_: Exception) {
             false
         }
@@ -151,46 +183,46 @@ object TuneslyCloudManager {
     ): Result<Boolean> = withContext(Dispatchers.IO) {
         val token = AppSettings.tuneslyToken.value
         if (token.isBlank()) return@withContext Result.failure(Exception("Not logged in"))
-        try {
-            val json = JSONObject().apply {
-                put("trackId", trackId)
-                put("title", title)
-                put("artist", artist)
-                put("durationSeconds", durationSeconds)
-                put("artworkUrl", artworkUrl)
-            }
-            val req = Request.Builder()
-                .url("$BASE_URL/library/favorite")
-                .addHeader("Authorization", "Bearer $token")
-                .post(json.toString().toRequestBody(JSON_MEDIA))
-                .build()
-
-            Http.client.newCall(req).execute().use { resp ->
-                val resJson = JSONObject(resp.body?.string().orEmpty())
+        val json = JSONObject().apply {
+            put("trackId", trackId)
+            put("title", title)
+            put("artist", artist)
+            put("durationSeconds", durationSeconds)
+            put("artworkUrl", artworkUrl)
+        }
+        executeRequest(
+            "/library/favorite",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .post(json.toString().toRequestBody(JSON_MEDIA))
+                    .build()
+            },
+            parser = { resp, resJson ->
                 if (resp.isSuccessful && resJson.optBoolean("success")) {
                     Result.success(resJson.optBoolean("isFavorite", false))
                 } else {
                     Result.failure(Exception(resJson.optString("error", "Failed to update favorite")))
                 }
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+            },
+        )
     }
 
     suspend fun getForYouRecommendations(limit: Int = 20): Result<List<TuneslyCloudTrack>> =
         withContext(Dispatchers.IO) {
             val token = AppSettings.tuneslyToken.value
             if (token.isBlank()) return@withContext Result.failure(Exception("Not logged in"))
-            try {
-                val req = Request.Builder()
-                    .url("$BASE_URL/recommendations/for-you?limit=$limit")
-                    .addHeader("Authorization", "Bearer $token")
-                    .get()
-                    .build()
-
-                Http.client.newCall(req).execute().use { resp ->
-                    val resJson = JSONObject(resp.body?.string().orEmpty())
+            executeRequest(
+                "/recommendations/for-you?limit=$limit",
+                builder = { url ->
+                    Request.Builder()
+                        .url(url)
+                        .addHeader("Authorization", "Bearer $token")
+                        .get()
+                        .build()
+                },
+                parser = { resp, resJson ->
                     if (resp.isSuccessful && resJson.optBoolean("success")) {
                         val arr = resJson.optJSONArray("recommendations") ?: JSONArray()
                         val list = mutableListOf<TuneslyCloudTrack>()
@@ -204,29 +236,28 @@ object TuneslyCloudManager {
                                     artworkUrl = obj.optString("artworkUrl"),
                                     durationSeconds = obj.optLong("durationSeconds"),
                                     reason = obj.optString("reason"),
-                                )
+                                ),
                             )
                         }
                         Result.success(list)
                     } else {
                         Result.failure(Exception(resJson.optString("error", "Failed to fetch recommendations")))
                     }
-                }
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+                },
+            )
         }
 
     suspend fun getTrendingRecommendations(limit: Int = 20): Result<List<TuneslyCloudTrack>> =
         withContext(Dispatchers.IO) {
-            try {
-                val req = Request.Builder()
-                    .url("$BASE_URL/recommendations/trending?limit=$limit")
-                    .get()
-                    .build()
-
-                Http.client.newCall(req).execute().use { resp ->
-                    val resJson = JSONObject(resp.body?.string().orEmpty())
+            executeRequest(
+                "/recommendations/trending?limit=$limit",
+                builder = { url ->
+                    Request.Builder()
+                        .url(url)
+                        .get()
+                        .build()
+                },
+                parser = { resp, resJson ->
                     if (resp.isSuccessful && resJson.optBoolean("success")) {
                         val arr = resJson.optJSONArray("trending") ?: JSONArray()
                         val list = mutableListOf<TuneslyCloudTrack>()
@@ -240,16 +271,14 @@ object TuneslyCloudManager {
                                     artworkUrl = obj.optString("artworkUrl"),
                                     durationSeconds = obj.optLong("durationSeconds"),
                                     reason = obj.optString("reason"),
-                                )
+                                ),
                             )
                         }
                         Result.success(list)
                     } else {
                         Result.failure(Exception(resJson.optString("error", "Failed to fetch trending")))
                     }
-                }
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+                },
+            )
         }
 }

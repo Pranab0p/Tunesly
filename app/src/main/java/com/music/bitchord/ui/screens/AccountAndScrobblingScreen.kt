@@ -420,6 +420,10 @@ fun AccountAndScrobblingScreen(
 
         Spacer(Modifier.height(24.dp))
     }
+
+    if (showTuneslyAuthDialog) {
+        TuneslyAuthDialog(onDismiss = { showTuneslyAuthDialog = false })
+    }
 }
 
 /** A hairline across the whole card, for setting a destructive row apart from the rows above it. */

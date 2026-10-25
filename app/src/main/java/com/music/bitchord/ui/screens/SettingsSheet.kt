@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Brightness4
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -195,6 +196,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    var showTuneslyDialogInSettings by remember { mutableStateOf(false) }
 
     val wifiQuality by AppSettings.audioQualityWifi.collectAsStateWithLifecycle()
     val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
@@ -409,6 +411,21 @@ fun SettingsScreen(
         )
 
         SearchableSettingsGroup(search) {
+            val tuneslyToken by AppSettings.tuneslyToken.collectAsStateWithLifecycle()
+            val tuneslyUsername by AppSettings.tuneslyUsername.collectAsStateWithLifecycle()
+            val tuneslyEmail by AppSettings.tuneslyEmail.collectAsStateWithLifecycle()
+
+            row("Tunesly Cloud", "login", "account", "sync", "vps") {
+                SettingsRow(
+                    icon = Icons.Rounded.CloudSync,
+                    title = if (tuneslyToken.isNotBlank()) tuneslyUsername.ifBlank { "Tunesly User" } else "Tunesly Cloud Sign In",
+                    subtitle = if (tuneslyToken.isNotBlank()) tuneslyEmail.ifBlank { "VPS Sync Active" } else "Sign In / Register (VPS Backend)",
+                    trailing = { Chevron() },
+                    onClick = { showTuneslyDialogInSettings = true },
+                )
+            }
+            RowDivider()
+
             val accountTitle = stringResource(R.string.account_integrations)
             // What the row opens is the scrobbling screen, so the services it
             // signs into are worth typing at this field even though none of
@@ -1864,6 +1881,9 @@ fun SettingsScreen(
         )
     }
 
+    if (showTuneslyDialogInSettings) {
+        TuneslyAuthDialog(onDismiss = { showTuneslyDialogInSettings = false })
+    }
 }
 
 /** "3 months of listening" — the unit a backup is actually measured in. */
