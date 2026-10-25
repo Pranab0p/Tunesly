@@ -112,10 +112,10 @@ suspend fun loadAutoplayTracks(
     var extra = QueueBuilder.extend(existing, ytRelated, limit)
 
     // Smart Infinite Radio: If YouTube radio returned fewer than limit tracks (or failed),
-    // automatically top up with Tunesly Cloud AI Recommendations so playback never stops!
+    // automatically top up with Tunesly Cloud AI Recommendations matching seed song's mood!
     if (extra.size < limit) {
         val needed = limit - extra.size
-        val cloudTracks = fetchCloudAutoplayCandidates(needed)
+        val cloudTracks = fetchCloudAutoplayCandidates(needed, seedSong)
         if (cloudTracks.isNotEmpty()) {
             val combined = ytRelated + cloudTracks
             extra = QueueBuilder.extend(existing, combined, limit)
@@ -134,9 +134,28 @@ suspend fun loadAutoplayTracks(
     })
 }
 
-private suspend fun fetchCloudAutoplayCandidates(limit: Int): List<Song> {
+private suspend fun fetchCloudAutoplayCandidates(limit: Int, seedSong: Song? = null): List<Song> {
+    val titleLower = seedSong?.title?.lowercase().orEmpty()
+    val artistLower = seedSong?.artist?.lowercase().orEmpty()
+    val mood = when {
+        titleLower.contains("love") || titleLower.contains("ishq") || titleLower.contains("pyaar") ||
+        titleLower.contains("dil") || artistLower.contains("arijit") || artistLower.contains("atif") -> "romantic"
+        titleLower.contains("party") || titleLower.contains("dance") || titleLower.contains("club") ||
+        artistLower.contains("karan aujla") || artistLower.contains("shubh") || artistLower.contains("diljit") ||
+        artistLower.contains("ap dhillon") -> "party"
+        titleLower.contains("sad") || titleLower.contains("dard") || titleLower.contains("judaai") ||
+        artistLower.contains("b praak") -> "sad"
+        titleLower.contains("chill") || titleLower.contains("lofi") || artistLower.contains("anuv jain") ||
+        artistLower.contains("local train") || artistLower.contains("prateek kuhad") -> "chill"
+        titleLower.contains("gym") || titleLower.contains("workout") || titleLower.contains("josh") -> "workout"
+        titleLower.contains("ram") || titleLower.contains("shiva") || titleLower.contains("krishna") ||
+        titleLower.contains("hanuman") || titleLower.contains("aarti") || titleLower.contains("bhajan") -> "devotional"
+        else -> null
+    }
     return try {
-        val res = if (TuneslyCloudManager.isLoggedIn) {
+        val res = if (mood != null) {
+            TuneslyCloudManager.getMoodRecommendations(mood, limit)
+        } else if (TuneslyCloudManager.isLoggedIn) {
             TuneslyCloudManager.getForYouRecommendations(limit)
         } else {
             TuneslyCloudManager.getTrendingRecommendations(limit)

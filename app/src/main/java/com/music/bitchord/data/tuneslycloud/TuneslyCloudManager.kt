@@ -282,6 +282,41 @@ object TuneslyCloudManager {
             )
         }
 
+    suspend fun getMoodRecommendations(mood: String, limit: Int = 25): Result<List<TuneslyCloudTrack>> =
+        withContext(Dispatchers.IO) {
+            val token = AppSettings.tuneslyToken.value
+            executeRequest(
+                "/recommendations/mood?mood=$mood&limit=$limit",
+                builder = { url ->
+                    val b = Request.Builder().url(url).get()
+                    if (token.isNotBlank()) b.addHeader("Authorization", "Bearer $token")
+                    b.build()
+                },
+                parser = { resp, resJson ->
+                    if (resp.isSuccessful && resJson.optBoolean("success")) {
+                        val arr = resJson.optJSONArray("recommendations") ?: JSONArray()
+                        val list = mutableListOf<TuneslyCloudTrack>()
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(i)
+                            list.add(
+                                TuneslyCloudTrack(
+                                    trackId = obj.optString("trackId"),
+                                    title = obj.optString("title"),
+                                    artist = obj.optString("artist"),
+                                    artworkUrl = obj.optString("artworkUrl"),
+                                    durationSeconds = obj.optLong("durationSeconds"),
+                                    reason = obj.optString("reason"),
+                                ),
+                            )
+                        }
+                        Result.success(list)
+                    } else {
+                        Result.failure(Exception(resJson.optString("error", "Failed to fetch mood recommendations")))
+                    }
+                },
+            )
+        }
+
     suspend fun fetchProfile(): Result<TuneslyUser> = withContext(Dispatchers.IO) {
         val token = AppSettings.tuneslyToken.value
         if (token.isBlank()) return@withContext Result.failure(Exception("Not logged in"))

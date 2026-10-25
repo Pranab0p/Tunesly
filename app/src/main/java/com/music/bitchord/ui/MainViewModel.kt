@@ -37,6 +37,7 @@ import com.music.bitchord.data.model.Account
 import com.music.bitchord.data.model.AccountChannel
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.DetailPage
+import com.music.bitchord.data.model.HomeMood
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.withoutRepeatsOf
 import com.music.bitchord.data.model.LibraryPage
@@ -114,6 +115,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _home = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
     val home: StateFlow<UiState<List<HomeShelf>>> = _home.asStateFlow()
+
+    val selectedHomeMood = MutableStateFlow(HomeMood.ALL)
+    private var defaultHomeShelves: List<HomeShelf> = emptyList()
+    private val moodShelvesCache = ConcurrentHashMap<HomeMood, List<HomeShelf>>()
 
     /**
      * Token for the next page of Home shelves; null once there's nothing
@@ -1644,6 +1649,114 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         navigator.onDetailStackShrunk(0)
     }
 
+    fun setHomeMood(mood: HomeMood) {
+        if (selectedHomeMood.value == mood) return
+        selectedHomeMood.value = mood
+
+        if (mood == HomeMood.ALL) {
+            if (defaultHomeShelves.isNotEmpty()) {
+                _home.value = UiState.Success(defaultHomeShelves)
+            } else {
+                loadHome()
+            }
+            return
+        }
+
+        moodShelvesCache[mood]?.let { cached ->
+            _home.value = UiState.Success(cached)
+            return
+        }
+
+        _home.value = UiState.Loading
+        viewModelScope.launch {
+            val moodShelves = mutableListOf<HomeShelf>()
+
+            val vpsJob = async {
+                TuneslyCloudManager.getMoodRecommendations(mood.id).getOrNull().orEmpty()
+            }
+            val ytSongsJob = async {
+                YtMusicRepository.search(mood.query, SearchFilter.SONGS).getOrNull().orEmpty()
+            }
+            val ytPlaylistsJob = async {
+                YtMusicRepository.search(mood.query, SearchFilter.PLAYLISTS).getOrNull().orEmpty()
+            }
+
+            val vpsTracks = vpsJob.await()
+            val ytSongs = ytSongsJob.await()
+            val ytPlaylists = ytPlaylistsJob.await()
+
+            val topTracks = mutableListOf<ShelfItem>()
+            val seenIds = mutableSetOf<String>()
+
+            vpsTracks.forEach { track ->
+                if (seenIds.add(track.trackId)) {
+                    topTracks.add(
+                        ShelfItem(
+                            title = track.title,
+                            subtitle = if (track.reason.isNotBlank()) "${track.artist} • ${track.reason}" else track.artist,
+                            thumbnailUrl = track.artworkUrl.ifBlank { "https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg" },
+                            videoId = track.trackId,
+                            browseId = null,
+                        )
+                    )
+                }
+            }
+
+            ytSongs.filterIsInstance<SearchResult.Track>().forEach { tr ->
+                if (seenIds.add(tr.song.videoId)) {
+                    topTracks.add(
+                        ShelfItem(
+                            title = tr.song.title,
+                            subtitle = tr.song.artist,
+                            thumbnailUrl = tr.song.thumbnailUrl,
+                            videoId = tr.song.videoId,
+                            browseId = null,
+                        )
+                    )
+                }
+            }
+
+            if (topTracks.isNotEmpty()) {
+                moodShelves.add(
+                    HomeShelf(
+                        title = "${mood.label} • Top Tracks",
+                        items = topTracks,
+                        subtitle = "Curated song suggestions for this mood",
+                    )
+                )
+            }
+
+            val playlistItems = ytPlaylists.filterIsInstance<SearchResult.Browse>().map { br ->
+                ShelfItem(
+                    title = br.item.title,
+                    subtitle = br.item.subtitle,
+                    thumbnailUrl = br.item.thumbnailUrl,
+                    videoId = null,
+                    browseId = br.item.browseId,
+                )
+            }
+
+            if (playlistItems.isNotEmpty()) {
+                moodShelves.add(
+                    HomeShelf(
+                        title = "${mood.label} • Playlists & Mixes",
+                        items = playlistItems,
+                        subtitle = "Non-stop compilations for your mood",
+                    )
+                )
+            }
+
+            if (selectedHomeMood.value == mood) {
+                if (moodShelves.isNotEmpty()) {
+                    moodShelvesCache[mood] = moodShelves
+                    _home.value = UiState.Success(moodShelves)
+                } else {
+                    _home.value = UiState.Error("No tracks found for this mood.")
+                }
+            }
+        }
+    }
+
     fun loadHome() {
         val identity = listenerKey()
         val generation = homeLoadGeneration.incrementAndGet()
@@ -1778,7 +1891,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         val added = shelves.withoutRepeatsOf(existing)
             .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
-        if (added.isNotEmpty()) _home.value = UiState.Success(existing + added)
+        if (added.isNotEmpty()) {
+            val updated = existing + added
+            _home.value = UiState.Success(updated)
+            if (selectedHomeMood.value == HomeMood.ALL) {
+                defaultHomeShelves = updated
+            }
+        }
     }
 
     /** Refreshes the core feed without blanking the current Play page first. */

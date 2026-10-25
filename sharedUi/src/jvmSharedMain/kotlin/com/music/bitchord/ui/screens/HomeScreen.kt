@@ -64,6 +64,9 @@ import com.music.bitchord.ui.icons.BitChordIcons
 import coil3.compose.AsyncImage
 import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.HEADER_ART_PX
+import com.music.bitchord.data.model.HomeMood
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.ShelfItem
@@ -142,6 +145,8 @@ fun HomeScreen(
     leadHero: Boolean = true,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
+    selectedMood: HomeMood = HomeMood.ALL,
+    onMoodSelect: ((HomeMood) -> Unit)? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -167,6 +172,15 @@ fun HomeScreen(
         ) {
             if (title != null) {
                 item { HomeTitle(title) }
+            }
+            if (onMoodSelect != null) {
+                item(key = "home:mood-chips") {
+                    HomeMoodChipsRow(
+                        selectedMood = selectedMood,
+                        onMoodSelect = onMoodSelect,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
             }
             if (!signedIn && onSignIn != null) {
                 item {
@@ -1078,5 +1092,44 @@ internal fun ShelfCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+
+@Composable
+private fun HomeMoodChipsRow(
+    selectedMood: HomeMood,
+    onMoodSelect: (HomeMood) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = PAGE_GUTTER, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HomeMood.entries.forEach { mood ->
+            val selected = mood == selectedMood
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.onBackground
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    .clickable { onMoodSelect(mood) }
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+            ) {
+                Text(
+                    text = mood.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) MaterialTheme.colorScheme.background
+                    else MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }

@@ -135,6 +135,7 @@ import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.innertube.InnertubeParser
 import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.data.model.HomeMood
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.PlaybackSourceType
@@ -721,6 +722,7 @@ private fun BitChordApp(
     )
 
     val homeState by viewModel.home.collectAsStateWithLifecycle()
+    val selectedHomeMood by viewModel.selectedHomeMood.collectAsStateWithLifecycle()
     val homeLoadingMore by viewModel.homeLoadingMore.collectAsStateWithLifecycle()
     val homeRecentlyPlayedLoading by viewModel.homeRecentlyPlayedLoading.collectAsStateWithLifecycle()
 
@@ -3059,6 +3061,8 @@ private fun BitChordApp(
                                 title = stringResource(R.string.listen_now),
                                 signedIn = signedIn,
                                 onSignIn = { webSession = WebSessionMode.SIGN_IN },
+                                selectedMood = selectedHomeMood,
+                                onMoodSelect = viewModel::setHomeMood,
                                 onItemClick = { item, shelfTitle ->
                                     val song = shelfSong(item)
                                     // Hoisted because ShelfItem lives in :shared, and

@@ -392,6 +392,16 @@ enum class SearchFilter(val label: String, val params: String?) {
     PLAYLISTS("Playlists", "EgWKAQIoAWoKEAkQChAFEAMQBA=="),
 }
 
+enum class HomeMood(val id: String, val label: String, val query: String) {
+    ALL("all", "All", ""),
+    ROMANTIC("romantic", "Romantic", "romantic hindi songs love arijit singh"),
+    CHILL("chill", "Chill & Lofi", "chill hindi indie lofi acoustic songs"),
+    PARTY("party", "Party & Dance", "punjabi party dance club songs"),
+    SAD("sad", "Sad & Broken", "sad emotional hindi songs heartbreak"),
+    WORKOUT("workout", "Workout", "workout motivational gym songs"),
+    BHAKTI("devotional", "Bhakti", "morning bhakti bhajan devotional aarti songs"),
+}
+
 /** A card in a home-feed carousel: either a track (videoId) or an album/playlist (browseId). */
 data class ShelfItem(
     val title: String,
