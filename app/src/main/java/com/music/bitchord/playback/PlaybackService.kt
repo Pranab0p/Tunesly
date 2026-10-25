@@ -3515,6 +3515,20 @@ class PlaybackService : MediaLibraryService() {
         if (prevSong != null && ended && prevStart > 0L) {
             submitListenBrainzFinished(prevSong, prevStart, listenBrainzDurationMs)
         }
+        if (prevSong != null && prevStart > 0L) {
+            val listenedSec = (System.currentTimeMillis() - prevStart) / 1000L
+            val durSec = (listenBrainzDurationMs ?: 0L) / 1000L
+            scope.launch {
+                com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.logPlayback(
+                    trackId = prevSong.videoId,
+                    title = prevSong.title,
+                    artist = prevSong.artist,
+                    durationSeconds = durSec,
+                    playedSeconds = listenedSec,
+                    artworkUrl = prevSong.thumbnailUrl.orEmpty()
+                )
+            }
+        }
         listenBrainzSong = newSong
         listenBrainzStartMs = if (exoPlayer.isPlaying) System.currentTimeMillis() else 0L
         listenBrainzDurationMs = durationMs

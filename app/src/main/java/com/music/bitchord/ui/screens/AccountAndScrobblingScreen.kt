@@ -33,6 +33,22 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.R
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.rounded.CloudSync
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import com.music.bitchord.data.tuneslycloud.TuneslyCloudManager
+import kotlinx.coroutines.launch
 import com.music.bitchord.data.model.Account
 import com.music.bitchord.data.settings.AppSettings
 import kotlin.math.roundToInt
@@ -68,6 +84,11 @@ fun AccountAndScrobblingScreen(
     val discordUsername by AppSettings.discordUsername.collectAsStateWithLifecycle()
     val discordRpcEnabled by AppSettings.discordRpcEnabled.collectAsStateWithLifecycle()
     val spotifyConnected by AppSettings.spotifySpdcToken.collectAsStateWithLifecycle()
+    val tuneslyToken by AppSettings.tuneslyToken.collectAsStateWithLifecycle()
+    val tuneslyUsername by AppSettings.tuneslyUsername.collectAsStateWithLifecycle()
+    val tuneslyEmail by AppSettings.tuneslyEmail.collectAsStateWithLifecycle()
+    val tuneslySyncEnabled by AppSettings.tuneslySyncEnabled.collectAsStateWithLifecycle()
+    var showTuneslyAuthDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -81,6 +102,52 @@ fun AccountAndScrobblingScreen(
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
         )
+
+        // Tunesly VPS Cloud Sync Card
+        SettingsGroup(
+            header = "Tunesly Cloud & AI",
+            footer = if (tuneslyToken.isNotBlank()) "Connected to VPS: 194.127.179.229. Telemetry & AI recommendations active." else "Sign in with your VPS account to sync history, favorites and get smart AI music recommendations.",
+            topSpacing = 0.dp,
+        ) {
+            if (tuneslyToken.isNotBlank()) {
+                SettingsRow(
+                    icon = Icons.Rounded.Person,
+                    title = tuneslyUsername.ifBlank { "Tunesly User" },
+                    subtitle = tuneslyEmail.ifBlank { "Logged in to VPS Cloud" },
+                    onClick = { showTuneslyAuthDialog = true },
+                )
+                FullWidthDivider()
+                SettingsRow(
+                    icon = Icons.Rounded.CloudSync,
+                    title = "Cloud Synchronization",
+                    subtitle = "Sync playback history & favorites to VPS",
+                    trailing = {
+                        Switch(
+                            checked = tuneslySyncEnabled,
+                            onCheckedChange = AppSettings::setTuneslySyncEnabled,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { AppSettings.setTuneslySyncEnabled(!tuneslySyncEnabled) },
+                )
+                FullWidthDivider()
+                DestructiveRow(
+                    label = "Sign Out of Tunesly Cloud",
+                    onClick = { TuneslyCloudManager.logout() },
+                )
+            } else {
+                SettingsRow(
+                    icon = Icons.Rounded.Cloud,
+                    title = "Sign In / Register",
+                    subtitle = "Connect to Tunesly VPS Backend",
+                    trailing = { Chevron() },
+                    onClick = { showTuneslyAuthDialog = true },
+                )
+            }
+        }
 
         // One card: who is signed in, which profile is listening, and the way
         // out, with the explanation of profiles underneath.
