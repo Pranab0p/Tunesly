@@ -68,6 +68,7 @@ import com.music.bitchord.data.settings.EqualizerMode
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
+import com.music.bitchord.playback.ReverbPreset
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import java.util.Locale
@@ -110,6 +111,9 @@ fun EqualizerScreen(
     val speed by AppSettings.playbackSpeed.collectAsStateWithLifecycle()
     val pitch by AppSettings.playbackPitch.collectAsStateWithLifecycle()
     val bassBoost by AppSettings.bassBoost.collectAsStateWithLifecycle()
+    val reverbEnabled by AppSettings.reverbEnabled.collectAsStateWithLifecycle()
+    val reverbPreset by AppSettings.reverbPreset.collectAsStateWithLifecycle()
+    val reverbWet by AppSettings.reverbWet.collectAsStateWithLifecycle()
     val spatialAudio by AppSettings.spatialAudio.collectAsStateWithLifecycle()
     val loudnessNormalization by AppSettings.loudnessNormalization.collectAsStateWithLifecycle()
     val crossfade by AppSettings.crossfadeSeconds.collectAsStateWithLifecycle()
@@ -341,6 +345,76 @@ fun EqualizerScreen(
                         AppSettings.setPlaybackSpeed(1.0f)
                         AppSettings.setPlaybackPitch(1.0f)
                     },
+                )
+            }
+        }
+
+        SettingsGroup(
+            header = stringResource(R.string.room_acoustics_title),
+            footer = stringResource(R.string.room_acoustics_footer),
+        ) {
+            SettingsRow(
+                icon = Icons.Rounded.Waves,
+                title = stringResource(R.string.room_acoustics_title),
+                subtitle = stringResource(R.string.room_acoustics_subtitle),
+                trailing = {
+                    Switch(
+                        checked = reverbEnabled,
+                        onCheckedChange = {
+                            haptics.play(if (it) Haptic.ToggleOn else Haptic.ToggleOff)
+                            AppSettings.setReverbEnabled(it)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = {
+                    haptics.play(if (!reverbEnabled) Haptic.ToggleOn else Haptic.ToggleOff)
+                    AppSettings.setReverbEnabled(!reverbEnabled)
+                },
+            )
+            if (reverbEnabled) {
+                RowDivider()
+                val roomOptions = listOf(
+                    ReverbPreset.STUDIO,
+                    ReverbPreset.SMALL_ROOM,
+                    ReverbPreset.MEDIUM_ROOM,
+                    ReverbPreset.CONCERT_HALL,
+                    ReverbPreset.CATHEDRAL,
+                )
+                val roomLabels = listOf(
+                    stringResource(R.string.room_preset_studio),
+                    stringResource(R.string.room_preset_small),
+                    stringResource(R.string.room_preset_medium),
+                    stringResource(R.string.room_preset_hall),
+                    stringResource(R.string.room_preset_cathedral),
+                )
+                val currentRoomIndex = roomOptions.indexOf(reverbPreset).let { if (it >= 0) it else 1 }
+                SegmentedControl(
+                    options = roomLabels,
+                    selectedIndex = currentRoomIndex,
+                    onSelect = { index ->
+                        haptics.play(Haptic.Select)
+                        val selected = roomOptions[index]
+                        AppSettings.setReverbPreset(selected)
+                        AppSettings.setReverbWet(selected.wetLevel)
+                    },
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+                )
+                RowDivider()
+                SliderRow(
+                    icon = Icons.Rounded.GraphicEq,
+                    title = stringResource(R.string.room_wet_depth),
+                    value = "${(reverbWet * 100f).roundToInt()}%",
+                    sliderValue = reverbWet,
+                    onSliderValue = {
+                        val snapped = (it * 20f).roundToInt() / 20f
+                        AppSettings.setReverbWet(snapped)
+                    },
+                    valueRange = 0.05f..0.75f,
+                    steps = 13,
                 )
             }
         }

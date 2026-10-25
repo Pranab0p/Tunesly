@@ -1237,6 +1237,15 @@
     <string name="bass_boost_subtitle">Punchier, deeper low frequencies</string>
     <string name="virtualizer_3d">3D surround virtualizer</string>
     <string name="virtualizer_3d_subtitle">Expands stereo field for immersive surround sound</string>
+    <string name="room_acoustics_title">Room Acoustics (Reverb DSP)</string>
+    <string name="room_acoustics_subtitle">Simulates acoustic spaces from intimate studio to grand concert hall</string>
+    <string name="room_acoustics_footer">Custom 32-bit Float DSP reverb engine simulates physical room reflections, wall damping, and acoustic space.</string>
+    <string name="room_preset_studio">Studio</string>
+    <string name="room_preset_small">Small Room</string>
+    <string name="room_preset_medium">Medium Room</string>
+    <string name="room_preset_hall">Concert Hall</string>
+    <string name="room_preset_cathedral">Cathedral</string>
+    <string name="room_wet_depth">Acoustic Depth (Wet Mix)</string>
 </resources>
 
 

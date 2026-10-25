@@ -14,6 +14,7 @@ import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
+import com.music.bitchord.playback.ReverbPreset
 import kotlinx.coroutines.flow.MutableStateFlow
 
 
@@ -341,6 +342,9 @@ object AppSettings {
     val playbackSpeed = MutableStateFlow(1.0f)
     val playbackPitch = MutableStateFlow(1.0f)
     val bassBoost = MutableStateFlow(false)
+    val reverbEnabled = MutableStateFlow(false)
+    val reverbPreset = MutableStateFlow(ReverbPreset.SMALL_ROOM)
+    val reverbWet = MutableStateFlow(0.24f)
     val themeMode = MutableStateFlow(ThemeMode.DARK)
 
     /** Keep playing similar music once the queue runs out. */
@@ -856,6 +860,12 @@ object AppSettings {
         playbackSpeed.value = prefs.getFloat(KEY_SPEED, 1.0f)
         playbackPitch.value = prefs.getFloat(KEY_PITCH, 1.0f)
         bassBoost.value = prefs.getBoolean(KEY_BASS_BOOST, false)
+        reverbEnabled.value = prefs.getBoolean(KEY_REVERB_ENABLED, false)
+        reverbPreset.value = ReverbPreset.fromName(prefs.getString(KEY_REVERB_PRESET, null))
+        if (reverbPreset.value == ReverbPreset.OFF) {
+            reverbPreset.value = ReverbPreset.SMALL_ROOM
+        }
+        reverbWet.value = prefs.getFloat(KEY_REVERB_WET, reverbPreset.value.wetLevel)
         themeMode.value = runCatching {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
         }.getOrDefault(ThemeMode.DARK)
@@ -1233,6 +1243,22 @@ object AppSettings {
         } else if (equalizerPreset.value == EqualizerPreset.BASS_BOOST) {
             setEqualizerPreset(EqualizerPreset.FLAT)
         }
+    }
+
+    fun setReverbEnabled(value: Boolean) {
+        reverbEnabled.value = value
+        prefs.edit().putBoolean(KEY_REVERB_ENABLED, value).apply()
+    }
+
+    fun setReverbPreset(preset: ReverbPreset) {
+        reverbPreset.value = preset
+        prefs.edit().putString(KEY_REVERB_PRESET, preset.name).apply()
+    }
+
+    fun setReverbWet(value: Float) {
+        val clamped = value.coerceIn(0f, 1f)
+        reverbWet.value = clamped
+        prefs.edit().putFloat(KEY_REVERB_WET, clamped).apply()
     }
 
     fun setShowNerdStats(value: Boolean) {
@@ -2070,6 +2096,9 @@ object AppSettings {
         private const val KEY_SPEED = "playback_speed"
     private const val KEY_PITCH = "playback_pitch"
     private const val KEY_BASS_BOOST = "bass_boost_enabled"
+    private const val KEY_REVERB_ENABLED = "reverb_enabled"
+    private const val KEY_REVERB_PRESET = "reverb_preset"
+    private const val KEY_REVERB_WET = "reverb_wet" 
     private const val KEY_THEME = "theme_mode"
     private const val KEY_AUTOPLAY = "autoplay"
     private const val KEY_SHUFFLE_ENABLED = "shuffle_enabled"

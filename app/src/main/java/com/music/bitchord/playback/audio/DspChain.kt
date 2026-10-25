@@ -4,6 +4,8 @@ import android.util.Log
 import com.music.bitchord.BuildConfig
 import com.music.bitchord.playback.EqualizerProcessor
 import com.music.bitchord.playback.LoudnessProcessor
+import com.music.bitchord.playback.ReverbAudioProcessor
+import com.music.bitchord.playback.ReverbPreset
 import com.music.bitchord.playback.SpatialAudioProcessor
 import com.music.bitchord.playback.TransitionFilterProcessor
 
@@ -32,6 +34,7 @@ import com.music.bitchord.playback.TransitionFilterProcessor
  * 24-bit integers unchanged — see `PrecisionAudioSink.publishOutputExactness`.
  */
 class DspChain(
+    val reverb: ReverbAudioProcessor = ReverbAudioProcessor(),
     val spatial: SpatialAudioProcessor = SpatialAudioProcessor(),
     val equalizer: EqualizerProcessor = EqualizerProcessor(),
     val transition: TransitionFilterProcessor = TransitionFilterProcessor(),
@@ -43,6 +46,7 @@ class DspChain(
 
     override fun configure(sampleRate: Int, channelCount: Int) {
         this.currentSampleRate = sampleRate
+        reverb.configure(sampleRate, channelCount)
         spatial.configure(sampleRate, channelCount)
         equalizer.configure(sampleRate, channelCount)
         transition.configure(sampleRate, channelCount)
@@ -77,6 +81,7 @@ class DspChain(
             }
         }
 
+        reverb.process(block)
         spatial.process(block)
         equalizer.process(block)
         transition.process(block)
@@ -88,6 +93,7 @@ class DspChain(
 
     @Suppress("DEPRECATION")
     override fun flush() {
+        reverb.flush()
         spatial.flush()
         equalizer.flush()
         transition.flush()
@@ -96,6 +102,7 @@ class DspChain(
 
     override fun reset() {
         processCounter = 0L
+        reverb.reset()
         spatial.reset()
         equalizer.reset()
         transition.reset()
