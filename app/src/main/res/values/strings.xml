@@ -1223,6 +1223,20 @@
     <string name="wear_os_code_hint">Pairing code</string>
     <string name="wear_os_done">Done</string>
     <string name="signed_by">Signed by %1$s</string>
+    <!-- Tunesly Audio Enhancements & Speed/Pitch Controls -->
+    <string name="playback_speed_and_pitch">Speed &amp; Pitch</string>
+    <string name="playback_speed_title">Playback speed</string>
+    <string name="playback_pitch_title">Pitch shift</string>
+    <string name="speed_pitch_footer">Slowed (0.85x) adds mellow chill vibes; Nightcore (1.25x) speeds up tempo and pitch.</string>
+    <string name="preset_slowed">Slowed (0.85x)</string>
+    <string name="preset_normal">Normal (1.0x)</string>
+    <string name="preset_nightcore">Nightcore (1.25x)</string>
+    <string name="audio_effects">Sound FX &amp; Enhancements</string>
+    <string name="audio_effects_footer">Bass Boost boosts low frequencies, 3D Surround widens acoustic space, and Loudness Normalization balances track volumes.</string>
+    <string name="bass_boost_title">Bass boost</string>
+    <string name="bass_boost_subtitle">Punchier, deeper low frequencies</string>
+    <string name="virtualizer_3d">3D surround virtualizer</string>
+    <string name="virtualizer_3d_subtitle">Expands stereo field for immersive surround sound</string>
 </resources>
 
 

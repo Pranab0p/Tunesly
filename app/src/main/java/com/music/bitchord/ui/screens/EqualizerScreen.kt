@@ -26,6 +26,11 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.automirrored.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.Audiotrack
+import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SurroundSound
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -102,6 +107,12 @@ fun EqualizerScreen(
     val bands by AppSettings.equalizerBands.collectAsStateWithLifecycle()
     val preset by AppSettings.equalizerPreset.collectAsStateWithLifecycle()
     val outputStatus by AudioOutputStatus.current.collectAsStateWithLifecycle()
+    val speed by AppSettings.playbackSpeed.collectAsStateWithLifecycle()
+    val pitch by AppSettings.playbackPitch.collectAsStateWithLifecycle()
+    val bassBoost by AppSettings.bassBoost.collectAsStateWithLifecycle()
+    val spatialAudio by AppSettings.spatialAudio.collectAsStateWithLifecycle()
+    val loudnessNormalization by AppSettings.loudnessNormalization.collectAsStateWithLifecycle()
+    val crossfade by AppSettings.crossfadeSeconds.collectAsStateWithLifecycle()
 
     val haptics = rememberHaptics()
     var pickingPreset by remember { mutableStateOf(false) }
@@ -257,6 +268,166 @@ fun EqualizerScreen(
                 }
             }
 
+        }
+
+        val currentPresetIndex = when {
+            abs(speed - 0.85f) < 0.02f && abs(pitch - 0.85f) < 0.02f -> 0
+            abs(speed - 1.0f) < 0.02f && abs(pitch - 1.0f) < 0.02f -> 1
+            abs(speed - 1.25f) < 0.02f && abs(pitch - 1.25f) < 0.02f -> 2
+            else -> -1
+        }
+
+        SettingsGroup(
+            header = stringResource(R.string.playback_speed_and_pitch),
+            footer = stringResource(R.string.speed_pitch_footer),
+        ) {
+            SegmentedControl(
+                options = listOf(
+                    stringResource(R.string.preset_slowed),
+                    stringResource(R.string.preset_normal),
+                    stringResource(R.string.preset_nightcore),
+                ),
+                selectedIndex = currentPresetIndex,
+                onSelect = { index ->
+                    haptics.play(Haptic.Select)
+                    when (index) {
+                        0 -> {
+                            AppSettings.setPlaybackSpeed(0.85f)
+                            AppSettings.setPlaybackPitch(0.85f)
+                        }
+                        1 -> {
+                            AppSettings.setPlaybackSpeed(1.0f)
+                            AppSettings.setPlaybackPitch(1.0f)
+                        }
+                        2 -> {
+                            AppSettings.setPlaybackSpeed(1.25f)
+                            AppSettings.setPlaybackPitch(1.25f)
+                        }
+                    }
+                },
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
+            )
+            SliderRow(
+                icon = Icons.Rounded.Speed,
+                title = stringResource(R.string.playback_speed_title),
+                value = "%.2fx".format(Locale.US, speed),
+                sliderValue = speed,
+                onSliderValue = {
+                    val snapped = (it * 20f).roundToInt() / 20f
+                    AppSettings.setPlaybackSpeed(snapped)
+                },
+                valueRange = 0.5f..2.0f,
+                steps = 29,
+            )
+            RowDivider()
+            SliderRow(
+                icon = Icons.Rounded.Audiotrack,
+                title = stringResource(R.string.playback_pitch_title),
+                value = "%.2fx".format(Locale.US, pitch),
+                sliderValue = pitch,
+                onSliderValue = {
+                    val snapped = (it * 20f).roundToInt() / 20f
+                    AppSettings.setPlaybackPitch(snapped)
+                },
+                valueRange = 0.5f..1.5f,
+                steps = 19,
+            )
+            if (abs(speed - 1.0f) > 0.01f || abs(pitch - 1.0f) > 0.01f) {
+                RowDivider()
+                DestructiveRow(
+                    label = stringResource(R.string.equalizer_reset),
+                    onClick = {
+                        haptics.play(Haptic.Select)
+                        AppSettings.setPlaybackSpeed(1.0f)
+                        AppSettings.setPlaybackPitch(1.0f)
+                    },
+                )
+            }
+        }
+
+        SettingsGroup(
+            header = stringResource(R.string.audio_effects),
+            footer = stringResource(R.string.audio_effects_footer),
+        ) {
+            SettingsRow(
+                icon = Icons.Rounded.Equalizer,
+                title = stringResource(R.string.bass_boost_title),
+                subtitle = stringResource(R.string.bass_boost_subtitle),
+                trailing = {
+                    Switch(
+                        checked = bassBoost,
+                        onCheckedChange = {
+                            haptics.play(if (it) Haptic.ToggleOn else Haptic.ToggleOff)
+                            AppSettings.setBassBoost(it)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = {
+                    haptics.play(if (!bassBoost) Haptic.ToggleOn else Haptic.ToggleOff)
+                    AppSettings.setBassBoost(!bassBoost)
+                },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.SurroundSound,
+                title = stringResource(R.string.virtualizer_3d),
+                subtitle = stringResource(R.string.virtualizer_3d_subtitle),
+                trailing = {
+                    Switch(
+                        checked = spatialAudio,
+                        onCheckedChange = {
+                            haptics.play(if (it) Haptic.ToggleOn else Haptic.ToggleOff)
+                            AppSettings.setSpatialAudio(it)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = {
+                    haptics.play(if (!spatialAudio) Haptic.ToggleOn else Haptic.ToggleOff)
+                    AppSettings.setSpatialAudio(!spatialAudio)
+                },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.VolumeUp,
+                title = stringResource(R.string.loudness_normalization),
+                subtitle = stringResource(R.string.loudness_normalization_subtitle),
+                trailing = {
+                    Switch(
+                        checked = loudnessNormalization,
+                        onCheckedChange = {
+                            haptics.play(if (it) Haptic.ToggleOn else Haptic.ToggleOff)
+                            AppSettings.setLoudnessNormalization(it)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = {
+                    haptics.play(if (!loudnessNormalization) Haptic.ToggleOn else Haptic.ToggleOff)
+                    AppSettings.setLoudnessNormalization(!loudnessNormalization)
+                },
+            )
+            RowDivider()
+            SliderRow(
+                icon = Icons.Rounded.Waves,
+                title = stringResource(R.string.crossfade),
+                subtitle = stringResource(R.string.crossfade_subtitle),
+                value = if (crossfade == 0) stringResource(R.string.off) else "${crossfade}s",
+                sliderValue = crossfade.toFloat(),
+                onSliderValue = { AppSettings.setCrossfadeSeconds(it.roundToInt()) },
+                valueRange = 0f..12f,
+                steps = 11,
+            )
         }
 
         // Outside the dimmed block on purpose: the device's own panel works

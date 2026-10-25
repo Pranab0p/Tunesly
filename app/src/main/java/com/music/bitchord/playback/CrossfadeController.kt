@@ -585,11 +585,16 @@ class CrossfadeController(
     /** Applies the listener's speed without exposing AudioTrack's parameter-change click. */
     fun applyPlaybackSpeed(speed: Float) {
         if (isTransitioning()) return
-        // User-controlled speed must track the slider immediately. A previous
-        // gain-notch wrapper restarted for every slider emission and sounded
-        // like repeated stalls while dragging.
         for (player in listOf(active(), standby()).distinct()) {
             player.setPlaybackSpeed(speed)
+        }
+    }
+
+    fun applyPlaybackParameters(speed: Float, pitch: Float) {
+        if (isTransitioning()) return
+        val params = androidx.media3.common.PlaybackParameters(speed, pitch)
+        for (player in listOf(active(), standby()).distinct()) {
+            player.playbackParameters = params
         }
     }
 
