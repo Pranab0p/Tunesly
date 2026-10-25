@@ -1671,9 +1671,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val moodShelves = mutableListOf<HomeShelf>()
 
-            val vpsJob = async {
-                TuneslyCloudManager.getMoodRecommendations(mood.id).getOrNull().orEmpty()
-            }
             val ytSongsJob = async {
                 YtMusicRepository.search(mood.query, SearchFilter.SONGS).getOrNull().orEmpty()
             }
@@ -1681,26 +1678,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 YtMusicRepository.search(mood.query, SearchFilter.PLAYLISTS).getOrNull().orEmpty()
             }
 
-            val vpsTracks = vpsJob.await()
             val ytSongs = ytSongsJob.await()
             val ytPlaylists = ytPlaylistsJob.await()
 
             val topTracks = mutableListOf<ShelfItem>()
             val seenIds = mutableSetOf<String>()
-
-            vpsTracks.forEach { track ->
-                if (seenIds.add(track.trackId)) {
-                    topTracks.add(
-                        ShelfItem(
-                            title = track.title,
-                            subtitle = if (track.reason.isNotBlank()) "${track.artist} • ${track.reason}" else track.artist,
-                            thumbnailUrl = track.artworkUrl.ifBlank { "https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg" },
-                            videoId = track.trackId,
-                            browseId = null,
-                        )
-                    )
-                }
-            }
 
             ytSongs.filterIsInstance<SearchResult.Track>().forEach { tr ->
                 if (seenIds.add(tr.song.videoId)) {
