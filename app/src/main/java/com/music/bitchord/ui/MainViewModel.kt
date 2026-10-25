@@ -26,6 +26,7 @@ import com.music.bitchord.data.lyrics.LyricLine
 import com.music.bitchord.data.lyrics.LyricsRepository
 import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.tuneslycloud.TuneslyCloudManager
 import com.music.bitchord.ui.navigation.AppNavigator
 import com.music.bitchord.data.innertube.Innertube
 import com.music.bitchord.data.innertube.PlaybackTracker
@@ -1687,6 +1688,56 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                 }
             }
+            // Tunesly Cloud AI: 'Made For You'
+            launch {
+                try {
+                    if (TuneslyCloudManager.isLoggedIn) {
+                        TuneslyCloudManager.getForYouRecommendations().onSuccess { tracks ->
+                            if (tracks.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
+                                val items = tracks.map { track ->
+                                    ShelfItem(
+                                        title = track.title,
+                                        subtitle = if (track.reason.isNotBlank()) "${track.artist} • ${track.reason}" else track.artist,
+                                        thumbnailUrl = track.artworkUrl.ifBlank { "https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg" },
+                                        videoId = track.trackId,
+                                        browseId = null,
+                                    )
+                                }
+                                val shelf = HomeShelf(
+                                    title = "Made For You",
+                                    items = items,
+                                    subtitle = "Personalized AI recommendations from Tunesly",
+                                )
+                                publishHomeShelves(listOf(shelf), prepend = true)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            // Tunesly Cloud Community: 'Trending on Tunesly'
+            launch {
+                try {
+                    TuneslyCloudManager.getTrendingRecommendations().onSuccess { tracks ->
+                        if (tracks.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
+                            val items = tracks.map { track ->
+                                ShelfItem(
+                                    title = track.title,
+                                    subtitle = track.artist,
+                                    thumbnailUrl = track.artworkUrl.ifBlank { "https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg" },
+                                    videoId = track.trackId,
+                                    browseId = null,
+                                )
+                            }
+                            val shelf = HomeShelf(
+                                title = "Trending on Tunesly",
+                                items = items,
+                                subtitle = "Community favorites",
+                            )
+                            publishHomeShelves(listOf(shelf), prepend = !TuneslyCloudManager.isLoggedIn)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
             YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
                 launch {
                     try {
@@ -1743,6 +1794,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         recent?.await()?.onSuccess { shelf ->
             if (identity == listenerKey()) shelf?.let { publishHomeShelves(listOf(it), prepend = true) }
+        }
+        val tuneslyForYou = if (TuneslyCloudManager.isLoggedIn) {
+            async { TuneslyCloudManager.getForYouRecommendations() }
+        } else null
+        val tuneslyTrending = async { TuneslyCloudManager.getTrendingRecommendations() }
+
+        tuneslyTrending.await().onSuccess { tracks ->
+            if (identity == listenerKey() && tracks.isNotEmpty()) {
+                val items = tracks.map { track ->
+                    ShelfItem(
+                        title = track.title,
+                        subtitle = track.artist,
+                        thumbnailUrl = track.artworkUrl.ifBlank { "https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg" },
+                        videoId = track.trackId,
+                        browseId = null,
+                    )
+                }
+                publishHomeShelves(
+                    listOf(HomeShelf("Trending on Tunesly", items, subtitle = "Community favorites")),
+                    prepend = !TuneslyCloudManager.isLoggedIn,
+                )
+            }
+        }
+        tuneslyForYou?.await()?.onSuccess { tracks ->
+            if (identity == listenerKey() && tracks.isNotEmpty()) {
+                val items = tracks.map { track ->
+                    ShelfItem(
+                        title = track.title,
+                        subtitle = if (track.reason.isNotBlank()) "${track.artist} • ${track.reason}" else track.artist,
+                        thumbnailUrl = track.artworkUrl.ifBlank { "https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg" },
+                        videoId = track.trackId,
+                        browseId = null,
+                    )
+                }
+                publishHomeShelves(
+                    listOf(HomeShelf("Made For You", items, subtitle = "Personalized AI recommendations from Tunesly")),
+                    prepend = true,
+                )
+            }
         }
     }
 

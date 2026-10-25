@@ -8,6 +8,7 @@ import com.music.bitchord.data.model.QueueTier
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.TrackMatcher
+import com.music.bitchord.data.tuneslycloud.TuneslyCloudManager
 import com.music.bitchord.playback.QueueCoordinator.asQueueEntry
 import kotlinx.coroutines.CancellationException
 
@@ -101,17 +102,54 @@ suspend fun loadAutoplayTracks(
     seedSong: Song,
     limit: Int = MAX_QUEUED_AUTOPLAY,
 ): Result<List<Song>> {
-    val seed = youtubeSeedFor(seedSong) ?: return Result.success(emptyList())
-    val related = YtMusicRepository.radio(seed).getOrElse { return Result.failure(it) }
-    val extra = QueueBuilder.extend(existing, related, limit)
+    val seed = youtubeSeedFor(seedSong)
+    val ytRelated = if (seed != null) {
+        YtMusicRepository.radio(seed).getOrElse { emptyList() }
+    } else {
+        emptyList()
+    }
+
+    var extra = QueueBuilder.extend(existing, ytRelated, limit)
+
+    // Smart Infinite Radio: If YouTube radio returned fewer than limit tracks (or failed),
+    // automatically top up with Tunesly Cloud AI Recommendations so playback never stops!
+    if (extra.size < limit) {
+        val needed = limit - extra.size
+        val cloudTracks = fetchCloudAutoplayCandidates(needed)
+        if (cloudTracks.isNotEmpty()) {
+            val combined = ytRelated + cloudTracks
+            extra = QueueBuilder.extend(existing, combined, limit)
+        }
+    }
+
     if (extra.isEmpty()) return Result.success(emptyList())
 
     return Result.success(extra.map {
         it.copy(
-            radioName = seedSong.radioName,
+            radioName = seedSong.radioName ?: "Tunesly Infinite Radio",
             playbackSource = seedSong.playbackSource,
             playbackSourceType = seedSong.playbackSourceType,
             playbackSourceId = seedSong.playbackSourceId,
         ).asQueueEntry(QueueTier.AUTOPLAY)
     })
+}
+
+private suspend fun fetchCloudAutoplayCandidates(limit: Int): List<Song> {
+    return try {
+        val res = if (TuneslyCloudManager.isLoggedIn) {
+            TuneslyCloudManager.getForYouRecommendations(limit)
+        } else {
+            TuneslyCloudManager.getTrendingRecommendations(limit)
+        }
+        res.getOrNull().orEmpty().map { t ->
+            Song(
+                videoId = t.trackId,
+                title = t.title,
+                artist = t.artist,
+                thumbnailUrl = t.artworkUrl.ifBlank { "https://i.ytimg.com/vi/${t.trackId}/hqdefault.jpg" },
+            )
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
 }
