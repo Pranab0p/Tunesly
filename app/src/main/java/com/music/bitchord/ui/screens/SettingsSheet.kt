@@ -196,7 +196,8 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var showTuneslyDialogInSettings by remember { mutableStateOf(false) }
+    var showTuneslyAuthDialogInSettings by remember { mutableStateOf(false) }
+    var showTuneslyProfileDialogInSettings by remember { mutableStateOf(false) }
 
     val wifiQuality by AppSettings.audioQualityWifi.collectAsStateWithLifecycle()
     val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
@@ -420,22 +421,26 @@ fun SettingsScreen(
                     icon = Icons.Rounded.CloudSync,
                     title = if (tuneslyToken.isNotBlank()) tuneslyUsername.ifBlank { "Tunesly User" } else "Tunesly Cloud Sign In",
                     subtitle = if (tuneslyToken.isNotBlank()) tuneslyEmail.ifBlank { "VPS Sync Active" } else "Sign In / Register (VPS Backend)",
+                    badge = if (tuneslyToken.isNotBlank()) "ACTIVE" else null,
                     trailing = { Chevron() },
-                    onClick = { showTuneslyDialogInSettings = true },
+                    onClick = {
+                        if (tuneslyToken.isNotBlank()) {
+                            showTuneslyProfileDialogInSettings = true
+                        } else {
+                            showTuneslyAuthDialogInSettings = true
+                        }
+                    },
                 )
             }
             RowDivider()
 
-            val accountTitle = stringResource(R.string.account_integrations)
-            // What the row opens is the scrobbling screen, so the services it
-            // signs into are worth typing at this field even though none of
-            // them is named on the row itself.
-            row(accountTitle, "scrobbling", "last.fm", "listenbrainz") {
+            val accountTitle = "YouTube Music & Integrations"
+            row(accountTitle, "youtube", "scrobbling", "last.fm", "listenbrainz") {
                 SettingsRow(
                     icon = Icons.Rounded.Person,
                     title = accountTitle,
                     subtitle = account?.email?.takeIf { it.isNotBlank() }
-                        ?: stringResource(if (signedIn) R.string.signed_in else R.string.not_signed_in),
+                        ?: if (signedIn) "YouTube Music Signed In" else "Google / YouTube Music (Optional)",
                     onClick = onAccountScrobbling,
                 )
             }
@@ -1881,8 +1886,11 @@ fun SettingsScreen(
         )
     }
 
-    if (showTuneslyDialogInSettings) {
-        TuneslyAuthDialog(onDismiss = { showTuneslyDialogInSettings = false })
+    if (showTuneslyAuthDialogInSettings) {
+        TuneslyAuthDialog(onDismiss = { showTuneslyAuthDialogInSettings = false })
+    }
+    if (showTuneslyProfileDialogInSettings) {
+        TuneslyProfileDialog(onDismiss = { showTuneslyProfileDialogInSettings = false })
     }
 }
 

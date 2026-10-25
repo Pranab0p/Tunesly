@@ -281,4 +281,34 @@ object TuneslyCloudManager {
                 },
             )
         }
+
+    suspend fun fetchProfile(): Result<TuneslyUser> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Not logged in"))
+        executeRequest(
+            "/auth/me",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .get()
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val userObj = resJson.getJSONObject("user")
+                    val user = TuneslyUser(
+                        id = userObj.optString("_id"),
+                        username = userObj.optString("username"),
+                        email = userObj.optString("email"),
+                        totalPlayTimeSeconds = userObj.optLong("totalPlayTimeSeconds", 0),
+                    )
+                    AppSettings.setTuneslyAccount(token, user.username, user.email)
+                    Result.success(user)
+                } else {
+                    Result.failure(Exception("Failed to load profile"))
+                }
+            },
+        )
+    }
 }

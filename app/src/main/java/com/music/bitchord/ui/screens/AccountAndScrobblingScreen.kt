@@ -89,6 +89,7 @@ fun AccountAndScrobblingScreen(
     val tuneslyEmail by AppSettings.tuneslyEmail.collectAsStateWithLifecycle()
     val tuneslySyncEnabled by AppSettings.tuneslySyncEnabled.collectAsStateWithLifecycle()
     var showTuneslyAuthDialog by remember { mutableStateOf(false) }
+    var showTuneslyProfileDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -114,7 +115,9 @@ fun AccountAndScrobblingScreen(
                     icon = Icons.Rounded.Person,
                     title = tuneslyUsername.ifBlank { "Tunesly User" },
                     subtitle = tuneslyEmail.ifBlank { "Logged in to VPS Cloud" },
-                    onClick = { showTuneslyAuthDialog = true },
+                    badge = "ACTIVE",
+                    trailing = { Chevron() },
+                    onClick = { showTuneslyProfileDialog = true },
                 )
                 FullWidthDivider()
                 SettingsRow(
@@ -423,6 +426,9 @@ fun AccountAndScrobblingScreen(
 
     if (showTuneslyAuthDialog) {
         TuneslyAuthDialog(onDismiss = { showTuneslyAuthDialog = false })
+    }
+    if (showTuneslyProfileDialog) {
+        TuneslyProfileDialog(onDismiss = { showTuneslyProfileDialog = false })
     }
 }
 
