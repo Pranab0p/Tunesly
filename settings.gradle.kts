@@ -15,7 +15,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BitChord"
+rootProject.name = "Tunesly"
 include(":shared")
 include(":sharedUi")
 
