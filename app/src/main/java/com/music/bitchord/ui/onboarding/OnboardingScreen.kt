@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.onboarding
 
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -78,6 +79,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -105,7 +107,6 @@ import com.music.bitchord.data.tuneslycloud.TuneslyCloudManager
 import com.music.bitchord.sharedui.resources.Res
 import com.music.bitchord.sharedui.resources.ic_google_g
 import com.music.bitchord.sharedui.resources.ic_logo
-import com.music.bitchord.ui.player.MESH_CYCLE_MILLIS
 import com.music.bitchord.ui.player.MeshGradientBackground
 import com.music.bitchord.ui.player.WelcomeMeshPalettes
 import com.music.bitchord.ui.player.cyclingMeshPalette
@@ -193,12 +194,8 @@ private val ONBOARDING_LANGUAGES = listOf(
 )
 
 /**
- * Ultra-smooth, animated first-launch experience for Tunesly.
- *
- * Sequence:
- * 1. Authentication (Login / Register / Guest / Google)
- * 2. Artist Following (Interactive search, avatar badges, multi-selection)
- * 3. Music Languages (Bilingual chips, multi-selection for personalized feed)
+ * Ultra-smooth, battery-efficient first-launch experience for Tunesly.
+ * Optimized across Android 11 through Android 17.
  */
 @Composable
 fun OnboardingScreen(
@@ -215,7 +212,6 @@ fun OnboardingScreen(
 
     val focusManager = LocalFocusManager.current
 
-    // Back handling: Step 3 -> Step 2 -> Step 1
     BackHandler(enabled = currentStep != OnboardingStep.AUTH) {
         if (currentStep == OnboardingStep.LANGUAGES) {
             currentStep = OnboardingStep.ARTISTS
@@ -224,14 +220,12 @@ fun OnboardingScreen(
         }
     }
 
-    // Auto-advance if Google sign-in completes on step 1
     LaunchedEffect(signedIn) {
         if (signedIn && currentStep == OnboardingStep.AUTH) {
             currentStep = OnboardingStep.ARTISTS
         }
     }
 
-    // Dynamic mesh animation across the entire onboarding flow
     val palette = cyclingMeshPalette(WelcomeMeshPalettes)
 
     Box(
@@ -240,15 +234,21 @@ fun OnboardingScreen(
             .background(Color.Black)
             .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } },
     ) {
-        MeshGradientBackground(
-            palette = palette,
-            trackKey = currentStep.ordinal,
-            continuous = true,
-            driftMillis = 7_000,
-            colorFadeMillis = MESH_CYCLE_MILLIS,
-        )
+        // Adaptive background: API 31+ uses hardware RenderEffect mesh that settles;
+        // API <= 30 (Android 11) uses zero-cost hardware gradient to prevent GPU jank.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MeshGradientBackground(
+                palette = palette,
+                trackKey = currentStep.ordinal,
+                continuous = false,
+                driftMillis = 3_500,
+                colorFadeMillis = 900,
+            )
+        } else {
+            Android11AmbientBackground(currentStep = currentStep)
+        }
 
-        // Gradient overlay for high legibility
+        // Subtle gradient overlay for clean contrast
         Box(
             Modifier
                 .fillMaxSize()
@@ -261,13 +261,12 @@ fun OnboardingScreen(
                 ),
         )
 
-        // Animated step transition
         AnimatedContent(
             targetState = currentStep,
             transitionSpec = {
                 val forward = targetState.ordinal > initialState.ordinal
-                (slideInHorizontally(tween(300)) { if (forward) it else -it } + fadeIn(tween(260)))
-                    .togetherWith(slideOutHorizontally(tween(260)) { if (forward) -it / 2 else it / 2 } + fadeOut(tween(180)))
+                (slideInHorizontally(tween(280)) { if (forward) it else -it } + fadeIn(tween(240)))
+                    .togetherWith(slideOutHorizontally(tween(240)) { if (forward) -it / 2 else it / 2 } + fadeOut(tween(160)))
             },
             label = "onboardingStepAnimation",
             modifier = Modifier.fillMaxSize(),
@@ -327,7 +326,34 @@ fun OnboardingScreen(
 }
 
 /**
+ * Android 11 (API 30) zero-cost ambient background. Eliminates GPU lag on older devices.
+ */
+@Composable
+private fun Android11AmbientBackground(currentStep: OnboardingStep) {
+    val targetColors = when (currentStep) {
+        OnboardingStep.AUTH -> listOf(Color(0xFF1E1E38), Color(0xFF121224), Color.Black)
+        OnboardingStep.ARTISTS -> listOf(Color(0xFF281E38), Color(0xFF161224), Color.Black)
+        OnboardingStep.LANGUAGES -> listOf(Color(0xFF1E2838), Color(0xFF101924), Color.Black)
+    }
+    val animTop by animateColorAsState(targetColors[0], tween(600), label = "a11Top")
+    val animMid by animateColorAsState(targetColors[1], tween(600), label = "a11Mid")
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to animTop,
+                    0.5f to animMid,
+                    1f to Color.Black,
+                )
+            ),
+    )
+}
+
+/**
  * Step 1: Authentication View (Login / Sign Up / Guest / Google).
+ * Isolated input states so typing does NOT trigger outer layout recomposition.
  */
 @Composable
 private fun AuthStepView(
@@ -341,23 +367,10 @@ private fun AuthStepView(
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    // Sign Up Fields
-    var fullName by rememberSaveable { mutableStateOf(initialName) }
-    var signupUsername by rememberSaveable { mutableStateOf("") }
-    var signupEmail by rememberSaveable { mutableStateOf("") }
-    var signupPassword by rememberSaveable { mutableStateOf("") }
-    var signupPasswordVisible by rememberSaveable { mutableStateOf(false) }
-
-    // Log In Fields
-    var loginIdentifier by rememberSaveable { mutableStateOf("") }
-    var loginPassword by rememberSaveable { mutableStateOf("") }
-    var loginPasswordVisible by rememberSaveable { mutableStateOf(false) }
-
-    // Status
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Brand logo pulse
+    // Breathing animation applied via graphicsLayer (zero recomposition)
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val logoGlowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.35f,
@@ -383,7 +396,7 @@ private fun AuthStepView(
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(18.dp))
 
             // Brand Header with Icon & Name
             Row(
@@ -397,7 +410,10 @@ private fun AuthStepView(
                             .size(48.dp)
                             .scale(1.2f)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = logoGlowAlpha * 0.18f)),
+                            .graphicsLayer {
+                                alpha = logoGlowAlpha * 0.20f
+                            }
+                            .background(Color.White),
                     )
                     Image(
                         painter = painterResource(Res.drawable.ic_logo),
@@ -419,8 +435,8 @@ private fun AuthStepView(
             AnimatedContent(
                 targetState = authMode,
                 transitionSpec = {
-                    (fadeIn(tween(260)) + slideInHorizontally { if (targetState == AuthMode.SIGNUP) 40 else -40 })
-                        .togetherWith(fadeOut(tween(180)) + slideOutHorizontally { if (targetState == AuthMode.SIGNUP) -40 else 40 })
+                    (fadeIn(tween(220)) + slideInHorizontally { if (targetState == AuthMode.SIGNUP) 30 else -30 })
+                        .togetherWith(fadeOut(tween(160)) + slideOutHorizontally { if (targetState == AuthMode.SIGNUP) -30 else 30 })
                 },
                 label = "headerText",
             ) { mode ->
@@ -428,7 +444,7 @@ private fun AuthStepView(
                     Text(
                         text = if (mode == AuthMode.LOGIN) "Welcome Back" else "Create Account",
                         style = MaterialTheme.typography.displaySmall.copy(
-                            fontSize = 31.sp,
+                            fontSize = 30.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.8).sp,
                             color = Color.White,
@@ -449,13 +465,13 @@ private fun AuthStepView(
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(22.dp))
 
             // Auth Tab Switcher
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .height(50.dp)
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.12f))
                     .padding(4.dp),
@@ -521,7 +537,7 @@ private fun AuthStepView(
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
 
             // Error Banner
             AnimatedVisibility(
@@ -551,242 +567,95 @@ private fun AuthStepView(
                 }
             }
 
-            // Animated Form Content
+            // Animated Form Content with isolated state
             AnimatedContent(
                 targetState = authMode,
                 transitionSpec = {
                     val forward = targetState == AuthMode.SIGNUP
-                    (slideInHorizontally(tween(280)) { if (forward) it / 2 else -it / 2 } + fadeIn(tween(260)))
-                        .togetherWith(slideOutHorizontally(tween(240)) { if (forward) -it / 2 else it / 2 } + fadeOut(tween(180)))
+                    (slideInHorizontally(tween(260)) { if (forward) it / 2 else -it / 2 } + fadeIn(tween(220)))
+                        .togetherWith(slideOutHorizontally(tween(220)) { if (forward) -it / 2 else it / 2 } + fadeOut(tween(160)))
                 },
                 label = "formContent",
             ) { mode ->
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (mode == AuthMode.LOGIN) {
-                        // Log In Form
-                        SmoothAuthInputField(
-                            value = loginIdentifier,
-                            onValueChange = {
-                                loginIdentifier = it
-                                errorMessage = null
-                            },
-                            placeholder = "Username or Email",
-                            leadingIcon = Icons.Rounded.Person,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Email,
-                                imeAction = ImeAction.Next,
-                            ),
-                        )
+                if (mode == AuthMode.LOGIN) {
+                    LoginForm(
+                        isLoading = isLoading,
+                        onLogin = { loginId, pass ->
+                            focusManager.clearFocus()
+                            if (loginId.isBlank() || pass.isBlank()) {
+                                errorMessage = "Please enter both username/email and password"
+                                return@LoginForm
+                            }
+                            isLoading = true
+                            errorMessage = null
+                            coroutineScope.launch {
+                                val result = TuneslyCloudManager.login(loginId, pass)
+                                isLoading = false
+                                result.fold(
+                                    onSuccess = { user ->
+                                        onNameChosen(user.username)
+                                        onProceedToArtists()
+                                    },
+                                    onFailure = { err ->
+                                        errorMessage = err.message ?: "Login failed. Check your credentials."
+                                    },
+                                )
+                            }
+                        },
+                        onSwitchToSignup = {
+                            authMode = AuthMode.SIGNUP
+                            errorMessage = null
+                        },
+                    )
+                } else {
+                    SignupForm(
+                        initialName = initialName,
+                        isLoading = isLoading,
+                        onSignup = { name, username, email, password ->
+                            focusManager.clearFocus()
+                            if (username.length < 3) {
+                                errorMessage = "Username must be at least 3 characters"
+                                return@SignupForm
+                            }
+                            if (!email.contains("@") || !email.contains(".")) {
+                                errorMessage = "Please enter a valid email address"
+                                return@SignupForm
+                            }
+                            if (password.length < 6) {
+                                errorMessage = "Password must be at least 6 characters"
+                                return@SignupForm
+                            }
 
-                        Spacer(Modifier.height(12.dp))
-
-                        SmoothAuthInputField(
-                            value = loginPassword,
-                            onValueChange = {
-                                loginPassword = it
-                                errorMessage = null
-                            },
-                            placeholder = stringResource(R.string.auth_field_password),
-                            leadingIcon = Icons.Rounded.Lock,
-                            isPassword = true,
-                            passwordVisible = loginPasswordVisible,
-                            onTogglePassword = { loginPasswordVisible = !loginPasswordVisible },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Password,
-                                imeAction = ImeAction.Done,
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                        )
-
-                        Spacer(Modifier.height(20.dp))
-
-                        AnimatedPillButton(
-                            label = stringResource(R.string.auth_btn_login),
-                            onClick = {
-                                focusManager.clearFocus()
-                                val cleanLogin = loginIdentifier.trim()
-                                val cleanPass = loginPassword
-                                if (cleanLogin.isBlank() || cleanPass.isBlank()) {
-                                    errorMessage = "Please enter both username/email and password"
-                                    return@AnimatedPillButton
-                                }
-                                isLoading = true
-                                errorMessage = null
-                                coroutineScope.launch {
-                                    val result = TuneslyCloudManager.login(cleanLogin, cleanPass)
-                                    isLoading = false
-                                    result.fold(
-                                        onSuccess = { user ->
-                                            onNameChosen(user.username)
-                                            onProceedToArtists()
-                                        },
-                                        onFailure = { err ->
-                                            errorMessage = err.message ?: "Login failed. Check your credentials."
-                                        },
-                                    )
-                                }
-                            },
-                            primary = true,
-                            enabled = !isLoading && loginIdentifier.isNotBlank() && loginPassword.isNotBlank(),
-                            loading = isLoading,
-                        )
-
-                        Spacer(Modifier.height(14.dp))
-
-                        Text(
-                            text = stringResource(R.string.auth_switch_to_signup),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable {
-                                    authMode = AuthMode.SIGNUP
-                                    errorMessage = null
-                                }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                    } else {
-                        // Sign Up Form
-                        SmoothAuthInputField(
-                            value = fullName,
-                            onValueChange = {
-                                fullName = it
-                                errorMessage = null
-                            },
-                            placeholder = stringResource(R.string.auth_field_fullname) + " (e.g. Aarav Sharma)",
-                            leadingIcon = Icons.Rounded.Person,
-                            keyboardOptions = KeyboardOptions(
-                                capitalization = KeyboardCapitalization.Words,
-                                imeAction = ImeAction.Next,
-                            ),
-                        )
-
-                        Spacer(Modifier.height(12.dp))
-
-                        SmoothAuthInputField(
-                            value = signupUsername,
-                            onValueChange = {
-                                signupUsername = it.filterNot { c -> c.isWhitespace() }.lowercase()
-                                errorMessage = null
-                            },
-                            placeholder = stringResource(R.string.auth_field_username) + " (e.g. aarav)",
-                            leadingIcon = Icons.Rounded.AlternateEmail,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Ascii,
-                                imeAction = ImeAction.Next,
-                            ),
-                        )
-
-                        Spacer(Modifier.height(12.dp))
-
-                        SmoothAuthInputField(
-                            value = signupEmail,
-                            onValueChange = {
-                                signupEmail = it.trim()
-                                errorMessage = null
-                            },
-                            placeholder = stringResource(R.string.auth_field_email) + " (e.g. aarav@gmail.com)",
-                            leadingIcon = Icons.Rounded.Email,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Email,
-                                imeAction = ImeAction.Next,
-                            ),
-                        )
-
-                        Spacer(Modifier.height(12.dp))
-
-                        SmoothAuthInputField(
-                            value = signupPassword,
-                            onValueChange = {
-                                signupPassword = it
-                                errorMessage = null
-                            },
-                            placeholder = stringResource(R.string.auth_field_password) + " (min 6 characters)",
-                            leadingIcon = Icons.Rounded.Lock,
-                            isPassword = true,
-                            passwordVisible = signupPasswordVisible,
-                            onTogglePassword = { signupPasswordVisible = !signupPasswordVisible },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Password,
-                                imeAction = ImeAction.Done,
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                        )
-
-                        Spacer(Modifier.height(20.dp))
-
-                        AnimatedPillButton(
-                            label = stringResource(R.string.auth_btn_signup),
-                            onClick = {
-                                focusManager.clearFocus()
-                                val cleanName = fullName.trim()
-                                val cleanUser = signupUsername.trim()
-                                val cleanEmail = signupEmail.trim()
-                                val cleanPass = signupPassword
-
-                                if (cleanUser.length < 3) {
-                                    errorMessage = "Username must be at least 3 characters"
-                                    return@AnimatedPillButton
-                                }
-                                if (!cleanEmail.contains("@") || !cleanEmail.contains(".")) {
-                                    errorMessage = "Please enter a valid email address"
-                                    return@AnimatedPillButton
-                                }
-                                if (cleanPass.length < 6) {
-                                    errorMessage = "Password must be at least 6 characters"
-                                    return@AnimatedPillButton
-                                }
-
-                                isLoading = true
-                                errorMessage = null
-                                coroutineScope.launch {
-                                    val result = TuneslyCloudManager.register(
-                                        username = cleanUser,
-                                        email = cleanEmail,
-                                        password = cleanPass,
-                                        displayName = cleanName.ifBlank { cleanUser },
-                                    )
-                                    isLoading = false
-                                    result.fold(
-                                        onSuccess = { user ->
-                                            onNameChosen(cleanName.ifBlank { user.username })
-                                            onProceedToArtists()
-                                        },
-                                        onFailure = { err ->
-                                            errorMessage = err.message ?: "Registration failed. Try a different username."
-                                        },
-                                    )
-                                }
-                            },
-                            primary = true,
-                            enabled = !isLoading && signupUsername.isNotBlank() && signupEmail.isNotBlank() && signupPassword.isNotBlank(),
-                            loading = isLoading,
-                        )
-
-                        Spacer(Modifier.height(14.dp))
-
-                        Text(
-                            text = stringResource(R.string.auth_switch_to_login),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable {
-                                    authMode = AuthMode.LOGIN
-                                    errorMessage = null
-                                }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                    }
+                            isLoading = true
+                            errorMessage = null
+                            coroutineScope.launch {
+                                val result = TuneslyCloudManager.register(
+                                    username = username,
+                                    email = email,
+                                    password = password,
+                                    displayName = name.ifBlank { username },
+                                )
+                                isLoading = false
+                                result.fold(
+                                    onSuccess = { user ->
+                                        onNameChosen(name.ifBlank { user.username })
+                                        onProceedToArtists()
+                                    },
+                                    onFailure = { err ->
+                                        errorMessage = err.message ?: "Registration failed. Try a different username."
+                                    },
+                                )
+                            }
+                        },
+                        onSwitchToLogin = {
+                            authMode = AuthMode.LOGIN
+                            errorMessage = null
+                        },
+                    )
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(18.dp))
 
             // OR Divider
             Row(
@@ -815,7 +684,7 @@ private fun AuthStepView(
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
 
             // Guest / Skip Option
             AnimatedPillButton(
@@ -828,7 +697,7 @@ private fun AuthStepView(
                 primary = false,
             )
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
 
             // Optional Google Sign-In
             AnimatedPillButton(
@@ -847,8 +716,179 @@ private fun AuthStepView(
                 },
             )
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(28.dp))
         }
+    }
+}
+
+/**
+ * Isolated Login Form: typing only recomposes this sub-tree.
+ */
+@Composable
+private fun LoginForm(
+    isLoading: Boolean,
+    onLogin: (String, String) -> Unit,
+    onSwitchToSignup: () -> Unit,
+) {
+    var identifier by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        SmoothAuthInputField(
+            value = identifier,
+            onValueChange = { identifier = it },
+            placeholder = "Username or Email",
+            leadingIcon = Icons.Rounded.Person,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next,
+            ),
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        SmoothAuthInputField(
+            value = password,
+            onValueChange = { password = it },
+            placeholder = stringResource(R.string.auth_field_password),
+            leadingIcon = Icons.Rounded.Lock,
+            isPassword = true,
+            passwordVisible = passwordVisible,
+            onTogglePassword = { passwordVisible = !passwordVisible },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        )
+
+        Spacer(Modifier.height(18.dp))
+
+        AnimatedPillButton(
+            label = stringResource(R.string.auth_btn_login),
+            onClick = { onLogin(identifier.trim(), password) },
+            primary = true,
+            enabled = !isLoading && identifier.isNotBlank() && password.isNotBlank(),
+            loading = isLoading,
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            text = stringResource(R.string.auth_switch_to_signup),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = Color.White.copy(alpha = 0.85f),
+            modifier = Modifier
+                .clip(CircleShape)
+                .clickable(onClick = onSwitchToSignup)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+}
+
+/**
+ * Isolated Sign Up Form: typing only recomposes this sub-tree.
+ */
+@Composable
+private fun SignupForm(
+    initialName: String,
+    isLoading: Boolean,
+    onSignup: (String, String, String, String) -> Unit,
+    onSwitchToLogin: () -> Unit,
+) {
+    var fullName by rememberSaveable { mutableStateOf(initialName) }
+    var username by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        SmoothAuthInputField(
+            value = fullName,
+            onValueChange = { fullName = it },
+            placeholder = stringResource(R.string.auth_field_fullname) + " (e.g. Aarav)",
+            leadingIcon = Icons.Rounded.Person,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                imeAction = ImeAction.Next,
+            ),
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        SmoothAuthInputField(
+            value = username,
+            onValueChange = { username = it.filterNot { c -> c.isWhitespace() }.lowercase() },
+            placeholder = stringResource(R.string.auth_field_username) + " (e.g. aarav)",
+            leadingIcon = Icons.Rounded.AlternateEmail,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Ascii,
+                imeAction = ImeAction.Next,
+            ),
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        SmoothAuthInputField(
+            value = email,
+            onValueChange = { email = it.trim() },
+            placeholder = stringResource(R.string.auth_field_email) + " (e.g. aarav@gmail.com)",
+            leadingIcon = Icons.Rounded.Email,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next,
+            ),
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        SmoothAuthInputField(
+            value = password,
+            onValueChange = { password = it },
+            placeholder = stringResource(R.string.auth_field_password) + " (min 6 chars)",
+            leadingIcon = Icons.Rounded.Lock,
+            isPassword = true,
+            passwordVisible = passwordVisible,
+            onTogglePassword = { passwordVisible = !passwordVisible },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        )
+
+        Spacer(Modifier.height(18.dp))
+
+        AnimatedPillButton(
+            label = stringResource(R.string.auth_btn_signup),
+            onClick = { onSignup(fullName.trim(), username.trim(), email.trim(), password) },
+            primary = true,
+            enabled = !isLoading && username.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
+            loading = isLoading,
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            text = stringResource(R.string.auth_switch_to_login),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = Color.White.copy(alpha = 0.85f),
+            modifier = Modifier
+                .clip(CircleShape)
+                .clickable(onClick = onSwitchToLogin)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        )
     }
 }
 
@@ -933,7 +973,7 @@ private fun ArtistSelectionStepView(
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
 
             // Search Bar
             Row(
@@ -1007,7 +1047,7 @@ private fun ArtistSelectionStepView(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(filteredArtists, key = { it.name }) { artist ->
+                items(filteredArtists, key = { it.name }, contentType = { "artist" }) { artist ->
                     val isSelected = selectedArtists.contains(artist.name)
                     ArtistGridItem(
                         artist = artist,
@@ -1061,6 +1101,7 @@ private fun ArtistSelectionStepView(
 
 /**
  * Individual Artist Circular Card in the Grid.
+ * Optimized with drawBehind and graphicsLayer for zero layout lag.
  */
 @Composable
 private fun ArtistGridItem(
@@ -1098,16 +1139,18 @@ private fun ArtistGridItem(
             modifier = Modifier.size(76.dp),
             contentAlignment = Alignment.Center,
         ) {
-            // Circular Avatar with vibrant gradient
+            // Circular Avatar with vibrant gradient (using drawBehind for fast GPU rendering)
             Box(
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            listOf(Color(artist.colorStart), Color(artist.colorEnd)),
-                        ),
-                    )
+                    .drawBehind {
+                        drawCircle(
+                            Brush.linearGradient(
+                                listOf(Color(artist.colorStart), Color(artist.colorEnd)),
+                            ),
+                        )
+                    }
                     .border(
                         width = if (isSelected) 2.5.dp else 1.dp,
                         color = if (isSelected) Color.White else Color.White.copy(alpha = 0.15f),
@@ -1125,7 +1168,6 @@ private fun ArtistGridItem(
                 )
             }
 
-            // Checkmark Badge
             if (isSelected) {
                 Box(
                     modifier = Modifier
@@ -1273,7 +1315,7 @@ private fun LanguageSelectionStepView(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(ONBOARDING_LANGUAGES, key = { it.id }) { lang ->
+                items(ONBOARDING_LANGUAGES, key = { it.id }, contentType = { "language" }) { lang ->
                     val isSelected = selectedLanguages.contains(lang.name)
                     LanguageGridCard(
                         language = lang,

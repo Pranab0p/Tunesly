@@ -58,6 +58,8 @@
     <application
         android:name=".BitChordApplication"
         android:allowBackup="true"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"
         android:appCategory="audio"
         android:usesCleartextTraffic="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
