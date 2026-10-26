@@ -36,6 +36,7 @@ data class TuneslyPublicPlaylist(
 data class TuneslyPublicProfile(
     val userId: String,
     val username: String,
+    val displayName: String = "",
     val avatar: String = "",
     val bio: String = "",
     val totalPlayTimeSeconds: Long = 0,
@@ -487,10 +488,17 @@ object TuneslyCloudManager {
         )
     }
 
-    suspend fun updateProfile(bio: String? = null, avatar: String? = null): Result<Boolean> = withContext(Dispatchers.IO) {
+    suspend fun updateProfile(
+        displayName: String? = null,
+        newUsername: String? = null,
+        bio: String? = null,
+        avatar: String? = null,
+    ): Result<Pair<String, String>> = withContext(Dispatchers.IO) {
         val token = AppSettings.tuneslyToken.value
         if (token.isBlank()) return@withContext Result.failure(Exception("Please log in to update profile"))
         val json = JSONObject().apply {
+            if (displayName != null) put("displayName", displayName)
+            if (newUsername != null) put("newUsername", newUsername)
             if (bio != null) put("bio", bio)
             if (avatar != null) put("avatar", avatar)
         }
@@ -505,7 +513,13 @@ object TuneslyCloudManager {
             },
             parser = { resp, resJson ->
                 if (resp.isSuccessful && resJson.optBoolean("success")) {
-                    Result.success(true)
+                    val userObj = resJson.optJSONObject("user")
+                    val updatedUsername = userObj?.optString("username").orEmpty()
+                    val updatedDisplayName = userObj?.optString("displayName").orEmpty()
+                    if (updatedUsername.isNotBlank()) {
+                        AppSettings.setTuneslyUsername(updatedUsername)
+                    }
+                    Result.success(Pair(updatedUsername, updatedDisplayName))
                 } else {
                     Result.failure(Exception(resJson.optString("error", "Failed to update profile")))
                 }
@@ -555,6 +569,7 @@ object TuneslyCloudManager {
                         TuneslyPublicProfile(
                             userId = p.optString("userId"),
                             username = p.optString("username"),
+                            displayName = p.optString("displayName", p.optString("username")),
                             avatar = p.optString("avatar"),
                             bio = p.optString("bio"),
                             totalPlayTimeSeconds = p.optLong("totalPlayTimeSeconds", 0),

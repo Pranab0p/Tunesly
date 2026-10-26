@@ -1608,6 +1608,11 @@ object AppSettings {
             .apply()
     }
 
+    fun setTuneslyUsername(username: String) {
+        tuneslyUsername.value = username
+        prefs.edit().putString(KEY_TUNESLY_USERNAME, username).apply()
+    }
+
     fun setTuneslySyncEnabled(enabled: Boolean) {
         tuneslySyncEnabled.value = enabled
         prefs.edit().putBoolean(KEY_TUNESLY_SYNC_ENABLED, enabled).apply()

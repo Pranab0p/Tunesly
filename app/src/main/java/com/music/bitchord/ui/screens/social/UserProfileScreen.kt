@@ -1,6 +1,12 @@
 package com.music.bitchord.ui.screens.social
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Base64
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,7 +17,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,8 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Message
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
-import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Edit
@@ -49,6 +53,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -84,19 +89,11 @@ import com.music.bitchord.data.tuneslycloud.TuneslyCloudManager
 import com.music.bitchord.data.tuneslycloud.TuneslyCloudTrack
 import com.music.bitchord.data.tuneslycloud.TuneslyPublicPlaylist
 import com.music.bitchord.data.tuneslycloud.TuneslyPublicProfile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
-// Instagram Iconic Gradient Colors
-private val InstaStoryGradient = Brush.linearGradient(
-    colors = listOf(
-        Color(0xFF833AB4),
-        Color(0xFFC13584),
-        Color(0xFFE1306C),
-        Color(0xFFFD1D1D),
-        Color(0xFFF77737),
-        Color(0xFFFCAF45),
-    )
-)
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 
 @Composable
 fun UserProfileScreen(
@@ -107,29 +104,30 @@ fun UserProfileScreen(
     onPlayTrack: (Song) -> Unit,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
-    var profileState by remember(username) { mutableStateOf<TuneslyPublicProfile?>(null) }
-    var loading by remember(username) { mutableStateOf(true) }
-    var error by remember(username) { mutableStateOf<String?>(null) }
+    var currentUsername by remember(username) { mutableStateOf(username) }
+    var profileState by remember(currentUsername) { mutableStateOf<TuneslyPublicProfile?>(null) }
+    var loading by remember(currentUsername) { mutableStateOf(true) }
+    var error by remember(currentUsername) { mutableStateOf<String?>(null) }
     var selectedTab by remember { mutableIntStateOf(0) }
     var isFollowing by remember { mutableStateOf(false) }
     var followersCount by remember { mutableIntStateOf(0) }
     var followActionLoading by remember { mutableStateOf(false) }
-    var showBioDialog by remember { mutableStateOf(false) }
-    var editBioText by remember { mutableStateOf("") }
+
+    // Edit Profile Modal State
+    var showEditProfileDialog by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    LaunchedEffect(username) {
+    LaunchedEffect(currentUsername) {
         loading = true
         error = null
-        TuneslyCloudManager.getUserProfile(username).fold(
+        TuneslyCloudManager.getUserProfile(currentUsername).fold(
             onSuccess = { prof ->
                 profileState = prof
                 isFollowing = prof.isFollowing
                 followersCount = prof.followersCount
-                editBioText = prof.bio
                 loading = false
             },
             onFailure = {
@@ -184,7 +182,7 @@ fun UserProfileScreen(
                 bottom = contentPadding.calculateBottomPadding(),
             )
     ) {
-        // --- 1. Instagram-Style Top Bar ---
+        // --- 1. Top Navigation Bar (Tunesly Style) ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -201,23 +199,21 @@ fun UserProfileScreen(
 
             Spacer(Modifier.width(4.dp))
 
-            Text(
-                text = profile.username,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-
-            Icon(
-                imageVector = Icons.Rounded.CheckCircle,
-                contentDescription = "Verified Music User",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
-
-            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = profile.displayName.ifBlank { profile.username },
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "@${profile.username}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
+            }
 
             IconButton(
                 onClick = {
@@ -235,479 +231,399 @@ fun UserProfileScreen(
 
         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
 
-        // --- 2. Instagram Profile Content Body ---
+        // --- 2. Main Profile Content ---
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 32.dp),
         ) {
-            // Header: Avatar + Counts
+            // Profile Card Header (Tunesly Dark Glass Card)
             item {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        // Instagram Story Ring Avatar
+                        // User Avatar (DP) with optional Edit badge
                         Box(
-                            modifier = Modifier
-                                .size(88.dp)
-                                .clip(CircleShape)
-                                .background(InstaStoryGradient)
-                                .padding(3.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.background)
-                                .padding(2.5.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center,
+                            contentAlignment = Alignment.BottomEnd,
                         ) {
-                            if (profile.avatar.isNotBlank()) {
-                                AsyncImage(
-                                    model = profile.avatar,
-                                    contentDescription = profile.username,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            } else {
-                                Text(
-                                    text = profile.username.take(1).uppercase(),
-                                    fontSize = 34.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
+                            Box(
+                                modifier = Modifier
+                                    .size(96.dp)
+                                    .clip(CircleShape)
+                                    .border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (profile.avatar.isNotBlank()) {
+                                    AsyncImage(
+                                        model = profile.avatar,
+                                        contentDescription = profile.username,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                } else {
+                                    Text(
+                                        text = (profile.displayName.ifBlank { profile.username }).take(1).uppercase(),
+                                        fontSize = 38.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+
+                            if (profile.isMe) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                        .clickable { showEditProfileDialog = true },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Edit,
+                                        contentDescription = "Change DP",
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
                             }
                         }
 
-                        // Stats: Tracks, Followers, Following
-                        Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 24.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                        ) {
-                            InstagramStatColumn(
-                                count = "${profile.recentTracks.size.coerceAtLeast(1)}",
-                                label = "Tracks",
+                        Spacer(Modifier.height(14.dp))
+
+                        // Display Name & Username Handle
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = profile.displayName.ifBlank { profile.username },
+                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
-                            InstagramStatColumn(
-                                count = "$followersCount",
-                                label = "Followers",
-                            )
-                            InstagramStatColumn(
-                                count = "${profile.followingCount}",
-                                label = "Following",
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = "Verified Listener",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
                             )
                         }
-                    }
 
-                    Spacer(Modifier.height(10.dp))
-
-                    // Bio Details
-                    Text(
-                        text = profile.username,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(vertical = 3.dp),
-                    ) {
                         Text(
-                            text = "🎵 Tunesly Music Explorer",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-
-                    if (profile.bio.isNotBlank()) {
-                        Text(
-                            text = profile.bio,
+                            text = "@${profile.username}",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Headphones,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "${"%.1f".format(hoursListened)} hours listened on Tunesly",
-                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Medium,
                         )
-                    }
 
-                    Spacer(Modifier.height(14.dp))
+                        // Bio
+                        if (profile.bio.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = profile.bio,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                            )
+                        }
 
-                    // Action Buttons (Instagram Style)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
+                        Spacer(Modifier.height(16.dp))
+
+                        // Stats Summary Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                        ) {
+                            TuneslyStatPill(
+                                count = "%.1fh".format(hoursListened),
+                                label = "Listened",
+                            )
+                            TuneslyStatPill(
+                                count = "$followersCount",
+                                label = "Followers",
+                            )
+                            TuneslyStatPill(
+                                count = "${profile.followingCount}",
+                                label = "Following",
+                            )
+                            TuneslyStatPill(
+                                count = "${profile.recentTracks.size}",
+                                label = "Tracks",
+                            )
+                        }
+
+                        Spacer(Modifier.height(18.dp))
+
+                        // Action Buttons
                         if (profile.isMe) {
-                            // Current user: Edit Profile
-                            OutlinedButton(
-                                onClick = { showBioDialog = true },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(38.dp),
-                                shape = RoundedCornerShape(8.dp),
+                            Button(
+                                onClick = { showEditProfileDialog = true },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Edit Bio", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Edit Profile & DP", fontWeight = FontWeight.Bold)
                             }
                         } else {
-                            // Follow / Following Button
-                            if (isFollowing) {
-                                OutlinedButton(
-                                    onClick = {
-                                        if (followActionLoading) return@OutlinedButton
-                                        followActionLoading = true
-                                        scope.launch {
-                                            TuneslyCloudManager.unfollowUser(profile.username).onSuccess {
-                                                isFollowing = false
-                                                followersCount = (followersCount - 1).coerceAtLeast(0)
-                                            }
-                                            followActionLoading = false
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1.2f)
-                                        .height(38.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                ) {
-                                    Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Following", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                }
-                            } else {
-                                Button(
-                                    onClick = {
-                                        if (followActionLoading) return@Button
-                                        followActionLoading = true
-                                        scope.launch {
-                                            TuneslyCloudManager.followUser(profile.username).onSuccess {
-                                                isFollowing = true
-                                                followersCount += 1
-                                            }
-                                            followActionLoading = false
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                    modifier = Modifier
-                                        .weight(1.2f)
-                                        .height(38.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                ) {
-                                    Text("Follow", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                }
-                            }
-
-                            // Message Button
-                            FilledTonalButton(
-                                onClick = { onMessageClick(profile.username) },
-                                modifier = Modifier
-                                    .weight(1.2f)
-                                    .height(38.dp),
-                                shape = RoundedCornerShape(8.dp),
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                Icon(Icons.AutoMirrored.Rounded.Message, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Message", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                if (isFollowing) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (followActionLoading) return@OutlinedButton
+                                            followActionLoading = true
+                                            scope.launch {
+                                                TuneslyCloudManager.unfollowUser(profile.username).onSuccess {
+                                                    isFollowing = false
+                                                    followersCount = (followersCount - 1).coerceAtLeast(0)
+                                                }
+                                                followActionLoading = false
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                    ) {
+                                        Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Following")
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            if (followActionLoading) return@Button
+                                            followActionLoading = true
+                                            scope.launch {
+                                                TuneslyCloudManager.followUser(profile.username).onSuccess {
+                                                    isFollowing = true
+                                                    followersCount += 1
+                                                }
+                                                followActionLoading = false
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                    ) {
+                                        Text("Follow", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                FilledTonalButton(
+                                    onClick = { onMessageClick(profile.username) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp),
+                                ) {
+                                    Icon(Icons.AutoMirrored.Rounded.Message, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Message")
+                                }
+
+                                FilledTonalButton(
+                                    onClick = { onJamClick(profile.username) },
+                                    shape = RoundedCornerShape(14.dp),
+                                ) {
+                                    Icon(Icons.Rounded.Headphones, contentDescription = "Jam", modifier = Modifier.size(18.dp))
+                                }
                             }
-
-                            // Jam Room Shortcut
-                            FilledTonalButton(
-                                onClick = { onJamClick(profile.username) },
-                                modifier = Modifier
-                                    .weight(0.9f)
-                                    .height(38.dp),
-                                shape = RoundedCornerShape(8.dp),
-                            ) {
-                                Icon(Icons.Rounded.Headphones, contentDescription = "Jam", modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Jam", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    // Instagram Highlights Story Bubbles
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        item {
-                            InstagramHighlightBubble(
-                                title = "🔥 Hits",
-                                icon = Icons.Rounded.Stars,
-                                onClick = { selectedTab = 0 },
-                            )
-                        }
-                        item {
-                            InstagramHighlightBubble(
-                                title = "💿 Playlists",
-                                icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
-                                onClick = { selectedTab = 1 },
-                            )
-                        }
-                        item {
-                            InstagramHighlightBubble(
-                                title = "✨ Taste",
-                                icon = Icons.Rounded.AutoAwesome,
-                                onClick = { selectedTab = 2 },
-                            )
-                        }
-                        item {
-                            InstagramHighlightBubble(
-                                title = "🎧 Jam",
-                                icon = Icons.Rounded.Headphones,
-                                onClick = { onJamClick(profile.username) },
-                            )
                         }
                     }
                 }
             }
 
-            // --- 3. Instagram Tabs Row (Grid, Playlists, Taste) ---
+            // Tabs Row (Tracks, Playlists, Taste)
             item {
                 TabRow(
                     selectedTabIndex = selectedTab,
                     containerColor = MaterialTheme.colorScheme.background,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = MaterialTheme.colorScheme.primary,
                     indicator = { tabPositions ->
                         TabRowDefaults.SecondaryIndicator(
                             Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
                             color = MaterialTheme.colorScheme.primary,
-                            height = 2.dp,
+                            height = 3.dp,
                         )
                     },
                     divider = {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), thickness = 0.5.dp)
                     },
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        icon = {
-                            Icon(
-                                Icons.Rounded.Apps,
-                                contentDescription = "Tracks Grid",
-                                tint = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
+                        text = { Text("Recent Songs", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) },
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        icon = {
-                            Icon(
-                                Icons.AutoMirrored.Rounded.PlaylistPlay,
-                                contentDescription = "Playlists",
-                                tint = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
+                        text = { Text("Playlists", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) },
                     )
                     Tab(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
-                        icon = {
-                            Icon(
-                                Icons.Rounded.Person,
-                                contentDescription = "About & Taste",
-                                tint = if (selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
+                        text = { Text("About & Taste", fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal) },
                     )
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            // Tab 0: Recent Songs List
+            if (selectedTab == 0) {
+                if (profile.recentTracks.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(36.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "No tracks played recently",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    items(profile.recentTracks) { track ->
+                        TuneslyTrackRow(
+                            track = track,
+                            onPlay = {
+                                onPlayTrack(
+                                    Song(
+                                        videoId = track.trackId,
+                                        title = track.title,
+                                        artist = track.artist,
+                                        thumbnailUrl = track.artworkUrl,
+                                        durationText = null,
+                                        fromAutoplay = false,
+                                    )
+                                )
+                            },
+                        )
+                    }
                 }
             }
 
-            // --- 4. Tab Contents ---
-            when (selectedTab) {
-                // Tab 0: Instagram 3-Column Square Music Grid
-                0 -> {
-                    if (profile.recentTracks.isEmpty()) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(48.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = "No tracks played yet",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    } else {
-                        // Chunk tracks into rows of 3 like Instagram Grid
-                        val chunkedTracks = profile.recentTracks.chunked(3)
-                        items(chunkedTracks) { rowTracks ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 1.dp),
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                for (track in rowTracks) {
-                                    InstagramGridPostItem(
-                                        track = track,
-                                        modifier = Modifier.weight(1f),
-                                        onPlay = {
-                                            onPlayTrack(
-                                                Song(
-                                                    videoId = track.trackId,
-                                                    title = track.title,
-                                                    artist = track.artist,
-                                                    thumbnailUrl = track.artworkUrl,
-                                                    durationText = null,
-                                                    fromAutoplay = false,
-                                                )
-                                            )
-                                        },
-                                    )
-                                }
-                                // Fill remaining slots if row has less than 3 items
-                                for (i in rowTracks.size until 3) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Tab 1: Playlists
-                1 -> {
-                    if (profile.playlists.isEmpty()) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(48.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = "No public playlists shared yet",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    } else {
-                        items(profile.playlists) { playlist ->
-                            InstagramPlaylistCard(playlist = playlist)
-                        }
-                    }
-                }
-
-                // Tab 2: Taste, Top Artists & Stats
-                2 -> {
+            // Tab 1: Playlists
+            if (selectedTab == 1) {
+                if (profile.playlists.isEmpty()) {
                     item {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(36.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             Text(
-                                text = "Top Artists",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface,
+                                text = "No public playlists shared yet",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
+                } else {
+                    items(profile.playlists) { playlist ->
+                        TuneslyPlaylistRow(playlist = playlist)
+                    }
+                }
+            }
 
-                            if (profile.topArtists.isEmpty()) {
-                                Text(
-                                    text = "Listening history building up...",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            } else {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    profile.topArtists.take(4).forEach { artist ->
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = MaterialTheme.colorScheme.surfaceVariant,
-                                            modifier = Modifier.padding(vertical = 4.dp),
+            // Tab 2: Taste & Top Artists
+            if (selectedTab == 2) {
+                item {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Top Artists Listened",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(10.dp))
+
+                        if (profile.topArtists.isEmpty()) {
+                            Text(
+                                text = "Listening history building up...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                profile.topArtists.take(4).forEach { artist ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.Person,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(14.dp),
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                )
-                                                Spacer(Modifier.width(6.dp))
-                                                Text(
-                                                    text = artist,
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                )
-                                            }
+                                            Icon(
+                                                Icons.Rounded.Person,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = artist,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                            )
                                         }
                                     }
                                 }
                             }
+                        }
 
-                            Spacer(Modifier.height(20.dp))
+                        Spacer(Modifier.height(24.dp))
 
-                            Text(
-                                text = "Member Information",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Account & Activity",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(10.dp))
 
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                    ) {
-                                        Text("Total Listen Time", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text("%.1f hours".format(hoursListened), fontWeight = FontWeight.Bold)
-                                    }
-                                    Spacer(Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                    ) {
-                                        Text("Favorite Tracks Saved", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text("${profile.favoritesCount}", fontWeight = FontWeight.Bold)
-                                    }
-                                    Spacer(Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                    ) {
-                                        Text("Joined Tunesly", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(profile.memberSince.take(10), fontWeight = FontWeight.Bold)
-                                    }
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Total Listen Time", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("%.1f hours".format(hoursListened), fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Favorite Tracks Saved", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${profile.favoritesCount}", fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Joined Tunesly", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(profile.memberSince.take(10), fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -717,46 +633,253 @@ fun UserProfileScreen(
         }
     }
 
-    // Edit Bio Dialog
-    if (showBioDialog) {
-        AlertDialog(
-            onDismissRequest = { showBioDialog = false },
-            title = { Text("Edit Your Bio") },
-            text = {
-                OutlinedTextField(
-                    value = editBioText,
-                    onValueChange = { editBioText = it.take(200) },
-                    placeholder = { Text("Write something about your music taste...") },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 4,
+    // --- 3. Complete Edit Profile Dialog (DP, Name, Username, Bio) ---
+    if (showEditProfileDialog) {
+        EditProfileModal(
+            currentProfile = profile,
+            onDismiss = { showEditProfileDialog = false },
+            onProfileUpdated = { updatedUsername, updatedDisplayName, updatedBio, updatedAvatar ->
+                profileState = profileState?.copy(
+                    username = updatedUsername,
+                    displayName = updatedDisplayName,
+                    bio = updatedBio,
+                    avatar = updatedAvatar,
                 )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            TuneslyCloudManager.updateProfile(bio = editBioText).onSuccess {
-                                profileState = profileState?.copy(bio = editBioText)
-                            }
-                            showBioDialog = false
-                        }
-                    }
-                ) {
-                    Text("Save")
+                if (updatedUsername != currentUsername) {
+                    currentUsername = updatedUsername
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBioDialog = false }) {
-                    Text("Cancel")
-                }
+                showEditProfileDialog = false
+                Toast.makeText(context, "Profile updated successfully!", Toast.LENGTH_SHORT).show()
             },
         )
     }
 }
 
-// Instagram Stat Column (Counts + Label)
+// Modal for editing DP, Name, Username, and Bio
 @Composable
-private fun InstagramStatColumn(count: String, label: String) {
+private fun EditProfileModal(
+    currentProfile: TuneslyPublicProfile,
+    onDismiss: () -> Unit,
+    onProfileUpdated: (username: String, displayName: String, bio: String, avatar: String) -> Unit,
+) {
+    var editDisplayName by remember { mutableStateOf(currentProfile.displayName.ifBlank { currentProfile.username }) }
+    var editUsername by remember { mutableStateOf(currentProfile.username) }
+    var editBio by remember { mutableStateOf(currentProfile.bio) }
+    var editAvatar by remember { mutableStateOf(currentProfile.avatar) }
+    var saving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Gallery Photo Picker
+    val galleryPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+                    val originalBitmap = BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
+
+                    if (originalBitmap != null) {
+                        // Scale to max 480x480 for fast upload and lightweight storage
+                        val maxDim = 480
+                        val ratio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
+                        val (targetW, targetH) = if (ratio > 1) {
+                            Pair(maxDim, (maxDim / ratio).toInt())
+                        } else {
+                            Pair((maxDim * ratio).toInt(), maxDim)
+                        }
+                        val scaled = Bitmap.createScaledBitmap(originalBitmap, targetW, targetH, true)
+                        val out = ByteArrayOutputStream()
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                        val bytes = out.toByteArray()
+                        val base64Str = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                        val dataUri = "data:image/jpeg;base64,$base64Str"
+
+                        withContext(Dispatchers.Main) {
+                            editAvatar = dataUri
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Could not load selected photo: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Edit Profile & DP",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            )
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                // Avatar preview and change button
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(88.dp)
+                                .clip(CircleShape)
+                                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (editAvatar.isNotBlank()) {
+                                AsyncImage(
+                                    model = editAvatar,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                Text(
+                                    text = editDisplayName.take(1).uppercase().ifBlank { "T" },
+                                    fontSize = 34.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { galleryPicker.launch("image/*") },
+                                shape = RoundedCornerShape(10.dp),
+                            ) {
+                                Icon(Icons.Rounded.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Choose Photo", fontSize = 12.sp)
+                            }
+
+                            if (editAvatar.isNotBlank()) {
+                                TextButton(
+                                    onClick = { editAvatar = "" },
+                                ) {
+                                    Text("Remove DP", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Display Name Input
+                item {
+                    OutlinedTextField(
+                        value = editDisplayName,
+                        onValueChange = { editDisplayName = it.take(50) },
+                        label = { Text("Display Name") },
+                        placeholder = { Text("e.g. John Doe") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                }
+
+                // Unique Username Handle Input
+                item {
+                    OutlinedTextField(
+                        value = editUsername,
+                        onValueChange = {
+                            // clean username: lowercase alphanumeric and underscores
+                            editUsername = it.lowercase().filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(30)
+                        },
+                        label = { Text("Username (@handle)") },
+                        prefix = { Text("@") },
+                        supportingText = { Text("Unique handle across all users") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                }
+
+                // Bio Input
+                item {
+                    OutlinedTextField(
+                        value = editBio,
+                        onValueChange = { editBio = it.take(250) },
+                        label = { Text("Bio") },
+                        placeholder = { Text("Tell other music lovers about your music taste...") },
+                        supportingText = { Text("${editBio.length}/250 characters") },
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                }
+
+                if (errorMessage != null) {
+                    item {
+                        Text(
+                            text = errorMessage!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !saving && editUsername.length >= 3,
+                onClick = {
+                    saving = true
+                    errorMessage = null
+                    scope.launch {
+                        TuneslyCloudManager.updateProfile(
+                            displayName = editDisplayName.trim(),
+                            newUsername = editUsername.trim(),
+                            bio = editBio.trim(),
+                            avatar = editAvatar.trim(),
+                        ).onSuccess { pair ->
+                            saving = false
+                            onProfileUpdated(pair.first, pair.second, editBio.trim(), editAvatar.trim())
+                        }.onFailure { err ->
+                            saving = false
+                            errorMessage = err.message ?: "Failed to update profile"
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                if (saving) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Saving...")
+                } else {
+                    Text("Save Changes")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !saving,
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+// Tunesly Stat Pill
+@Composable
+private fun TuneslyStatPill(count: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = count,
@@ -771,130 +894,87 @@ private fun InstagramStatColumn(count: String, label: String) {
     }
 }
 
-// Instagram Highlight Story Bubble
+// Tunesly Track Row
 @Composable
-private fun InstagramHighlightBubble(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() },
-    ) {
-        Box(
-            modifier = Modifier
-                .size(60.dp)
-                .clip(CircleShape)
-                .border(1.5.dp, MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                .padding(3.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp),
-            )
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-        )
-    }
-}
-
-// Instagram 3-Column Square Grid Post Item
-@Composable
-private fun InstagramGridPostItem(
+private fun TuneslyTrackRow(
     track: TuneslyCloudTrack,
-    modifier: Modifier = Modifier,
     onPlay: () -> Unit,
 ) {
-    Box(
-        modifier = modifier
-            .aspectRatio(1f)
-            .clickable { onPlay() }
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable(onClick = onPlay),
     ) {
-        if (track.artworkUrl.isNotBlank()) {
-            AsyncImage(
-                model = track.artworkUrl,
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    Icons.Rounded.MusicNote,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(32.dp),
+                if (track.artworkUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = track.artworkUrl,
+                        contentDescription = track.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Icon(
+                        Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = track.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
 
-        // Instagram gradient vignette overlay at the bottom with title
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.75f),
-                        )
-                    )
-                ),
-            contentAlignment = Alignment.BottomStart,
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            IconButton(onClick = onPlay) {
                 Icon(
                     Icons.Rounded.PlayArrow,
                     contentDescription = "Play",
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp),
-                )
-                Spacer(Modifier.width(2.dp))
-                Text(
-                    text = track.title,
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Medium,
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
         }
     }
 }
 
-// Instagram Playlist Card
+// Tunesly Playlist Row
 @Composable
-private fun InstagramPlaylistCard(playlist: TuneslyPublicPlaylist) {
+private fun TuneslyPlaylistRow(playlist: TuneslyPublicPlaylist) {
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 5.dp),
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -902,8 +982,8 @@ private fun InstagramPlaylistCard(playlist: TuneslyPublicPlaylist) {
         ) {
             Box(
                 modifier = Modifier
-                    .size(54.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .size(50.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -919,7 +999,7 @@ private fun InstagramPlaylistCard(playlist: TuneslyPublicPlaylist) {
                         Icons.AutoMirrored.Rounded.PlaylistPlay,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(26.dp),
                     )
                 }
             }
@@ -939,13 +1019,6 @@ private fun InstagramPlaylistCard(playlist: TuneslyPublicPlaylist) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            Icon(
-                Icons.Rounded.PlayArrow,
-                contentDescription = "Play",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp),
-            )
         }
     }
 }
