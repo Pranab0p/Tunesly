@@ -18,13 +18,13 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/KabirSinghBhatia/BitChord/backend/clock"
-	"github.com/KabirSinghBhatia/BitChord/backend/codes"
-	"github.com/KabirSinghBhatia/BitChord/backend/config"
-	"github.com/KabirSinghBhatia/BitChord/backend/hub"
-	"github.com/KabirSinghBhatia/BitChord/backend/party"
-	"github.com/KabirSinghBhatia/BitChord/backend/presence"
-	"github.com/KabirSinghBhatia/BitChord/backend/protocol"
+	"github.com/PranabMahanta/Tunesly/backend/clock"
+	"github.com/PranabMahanta/Tunesly/backend/codes"
+	"github.com/PranabMahanta/Tunesly/backend/config"
+	"github.com/PranabMahanta/Tunesly/backend/hub"
+	"github.com/PranabMahanta/Tunesly/backend/party"
+	"github.com/PranabMahanta/Tunesly/backend/presence"
+	"github.com/PranabMahanta/Tunesly/backend/protocol"
 )
 
 var (

@@ -17,7 +17,7 @@ This list is automatically generated from GitHub repository contributor data.
 <!-- BEGIN CONTRIBUTORS -->
 - [@kushagrasinghx](https://github.com/kushagrasinghx)
 - [@Galaxyyss](https://github.com/Galaxyyss)
-- [@KabirSinghBhatia](https://github.com/KabirSinghBhatia)
+- [@PranabMahanta](https://github.com/PranabMahanta)
 - [@NeoTurcios](https://github.com/NeoTurcios)
 - [@itsmeadarsh2008](https://github.com/itsmeadarsh2008)
 - [@MaverickRox](https://github.com/MaverickRox)
