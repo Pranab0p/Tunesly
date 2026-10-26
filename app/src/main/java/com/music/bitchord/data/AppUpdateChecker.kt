@@ -173,16 +173,22 @@ object AppUpdateChecker {
             dir.listFiles()?.forEach { it.delete() }
             val target = File(dir, "bitchord-${info.version}.apk")
 
-            val request = Request.Builder().url(url).build()
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Tunesly-Android/${BuildConfig.VERSION_NAME}")
+                .header("Accept-Encoding", "identity")
+                .build()
             Http.client.newCall(request).execute().use { response ->
                 check(response.isSuccessful) { "Download failed: HTTP ${response.code}" }
                 val body = response.body ?: error("Empty download body")
                 val total = body.contentLength().takeIf { it > 0 }
 
-                body.byteStream().use { input ->
-                    target.outputStream().use { output ->
-                        val buffer = ByteArray(64 * 1024)
+                body.byteStream().buffered(256 * 1024).use { input ->
+                    target.outputStream().buffered(256 * 1024).use { output ->
+                        val buffer = ByteArray(256 * 1024)
                         var readTotal = 0L
+                        var lastEmitTime = 0L
+                        var lastPercent = -1
                         while (true) {
                             if (downloadCancelled) {
                                 _download.value = DownloadState.Idle
@@ -192,11 +198,19 @@ object AppUpdateChecker {
                             if (read == -1) break
                             output.write(buffer, 0, read)
                             readTotal += read
-                            total?.let {
-                                _download.value =
-                                    DownloadState.Downloading((readTotal.toFloat() / it).coerceIn(0f, 1f))
+
+                            val now = System.currentTimeMillis()
+                            val percent = if (total != null && total > 0) ((readTotal * 100) / total).toInt() else -1
+                            if (percent != lastPercent && (now - lastEmitTime >= 120 || readTotal == total)) {
+                                lastPercent = percent
+                                lastEmitTime = now
+                                total?.let {
+                                    _download.value =
+                                        DownloadState.Downloading((readTotal.toFloat() / it).coerceIn(0f, 1f))
+                                }
                             }
                         }
+                        output.flush()
                     }
                 }
             }
