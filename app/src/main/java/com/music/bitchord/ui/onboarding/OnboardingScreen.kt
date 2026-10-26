@@ -1,17 +1,33 @@
 package com.music.bitchord.ui.onboarding
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -55,6 +72,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -90,20 +109,17 @@ private enum class AuthMode {
 }
 
 /**
- * First-launch welcome & authentication screen for Tunesly.
+ * Ultra-smooth, animated first-launch welcome & authentication screen for Tunesly.
  *
- * Provides Log In and Sign Up tabs with fields for Name, Username, Email,
- * and Password, plus a Guest entry option.
+ * Features fluid spring animations, sliding tab pill indicator, animated form transitions,
+ * glassmorphic inputs with glowing focus borders, and tactile button feedback.
  */
 @Composable
 fun OnboardingScreen(
     signedIn: Boolean,
     initialName: String,
-    /** Saves the user's display / nickname */
     onNameChosen: (String) -> Unit,
-    /** Opens Google / YouTube sign-in */
     onSignIn: () -> Unit,
-    /** Finishes onboarding and transitions to main app */
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -136,6 +152,18 @@ fun OnboardingScreen(
     // Dynamic mesh animation
     val palette = cyclingMeshPalette(WelcomeMeshPalettes)
 
+    // Subtle breathing animation for brand logo
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val logoGlowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "logoGlow",
+    )
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -146,7 +174,7 @@ fun OnboardingScreen(
             palette = palette,
             trackKey = authMode.ordinal,
             continuous = true,
-            driftMillis = 6_000,
+            driftMillis = 7_000,
             colorFadeMillis = MESH_CYCLE_MILLIS,
         )
 
@@ -156,9 +184,9 @@ fun OnboardingScreen(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.25f),
-                        0.45f to Color.Black.copy(alpha = 0.55f),
-                        1f to Color.Black.copy(alpha = 0.88f),
+                        0f to Color.Black.copy(alpha = 0.28f),
+                        0.40f to Color.Black.copy(alpha = 0.58f),
+                        1f to Color.Black.copy(alpha = 0.90f),
                     ),
                 ),
         )
@@ -185,110 +213,172 @@ fun OnboardingScreen(
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier.padding(bottom = 8.dp),
                 ) {
-                    Image(
-                        painter = painterResource(Res.drawable.ic_logo),
-                        contentDescription = "Tunesly Logo",
-                        modifier = Modifier.size(36.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
+                    Box(contentAlignment = Alignment.Center) {
+                        // Subtle animated radial glow behind logo
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .scale(1.2f)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = logoGlowAlpha * 0.18f)),
+                        )
+                        Image(
+                            painter = painterResource(Res.drawable.ic_logo),
+                            contentDescription = "Tunesly Logo",
+                            modifier = Modifier.size(38.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
                     Text(
                         text = "TUNESLY",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black,
-                        letterSpacing = 2.5.sp,
+                        letterSpacing = 3.sp,
                         color = Color.White,
                     )
                 }
 
-                // Title & Subtitle
-                Text(
-                    text = if (authMode == AuthMode.LOGIN) "Welcome Back" else "Create Account",
-                    style = MaterialTheme.typography.displaySmall.copy(
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.8).sp,
-                        color = Color.White,
-                    ),
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = if (authMode == AuthMode.LOGIN) {
-                        stringResource(R.string.onboarding_auth_welcome_subtitle)
-                    } else {
-                        "Sign up to sync music across devices, chat with friends & personalize your feed"
+                // Animated Title & Subtitle Transition
+                AnimatedContent(
+                    targetState = authMode,
+                    transitionSpec = {
+                        (fadeIn(tween(260)) + slideInHorizontally { if (targetState == AuthMode.SIGNUP) 40 else -40 })
+                            .togetherWith(fadeOut(tween(180)) + slideOutHorizontally { if (targetState == AuthMode.SIGNUP) -40 else 40 })
                     },
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 13.5.sp,
-                        lineHeight = 19.sp,
-                        color = Color.White.copy(alpha = 0.72f),
-                    ),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                )
-
-                Spacer(Modifier.height(22.dp))
-
-                // Segmented Switcher (Log In | Sign Up)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.14f))
-                        .padding(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clip(CircleShape)
-                            .background(if (authMode == AuthMode.LOGIN) Color.White else Color.Transparent)
-                            .clickable {
-                                authMode = AuthMode.LOGIN
-                                errorMessage = null
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    label = "headerText",
+                ) { mode ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = stringResource(R.string.auth_tab_login),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (authMode == AuthMode.LOGIN) Color.Black else Color.White.copy(alpha = 0.75f),
+                            text = if (mode == AuthMode.LOGIN) "Welcome Back" else "Create Account",
+                            style = MaterialTheme.typography.displaySmall.copy(
+                                fontSize = 31.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.8).sp,
+                                color = Color.White,
+                            ),
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = if (mode == AuthMode.LOGIN) {
+                                stringResource(R.string.onboarding_auth_welcome_subtitle)
+                            } else {
+                                "Sign up to sync music across devices, chat with friends & personalize your feed"
+                            },
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 13.5.sp,
+                                lineHeight = 19.sp,
+                                color = Color.White.copy(alpha = 0.72f),
+                            ),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 8.dp),
                         )
                     }
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                // Smooth Sliding Capsule Switcher (Log In | Sign Up)
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .padding(4.dp),
+                ) {
+                    val tabWidth = (maxWidth) / 2
+                    val sliderOffset by animateDpAsState(
+                        targetValue = if (authMode == AuthMode.LOGIN) 0.dp else tabWidth,
+                        animationSpec = spring(stiffness = 600f, dampingRatio = 0.82f),
+                        label = "sliderPill",
+                    )
+
+                    // Sliding Active White Indicator
                     Box(
                         modifier = Modifier
-                            .weight(1f)
+                            .offset(x = sliderOffset)
+                            .width(tabWidth)
                             .fillMaxHeight()
                             .clip(CircleShape)
-                            .background(if (authMode == AuthMode.SIGNUP) Color.White else Color.Transparent)
-                            .clickable {
-                                authMode = AuthMode.SIGNUP
-                                errorMessage = null
-                            },
-                        contentAlignment = Alignment.Center,
+                            .background(Color.White),
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = stringResource(R.string.auth_tab_signup),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (authMode == AuthMode.SIGNUP) Color.Black else Color.White.copy(alpha = 0.75f),
-                        )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(CircleShape)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) {
+                                    authMode = AuthMode.LOGIN
+                                    errorMessage = null
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val textColor by animateColorAsState(
+                                if (authMode == AuthMode.LOGIN) Color.Black else Color.White.copy(alpha = 0.75f),
+                                tween(180),
+                                label = "loginTextCol",
+                            )
+                            Text(
+                                text = stringResource(R.string.auth_tab_login),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor,
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(CircleShape)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) {
+                                    authMode = AuthMode.SIGNUP
+                                    errorMessage = null
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val textColor by animateColorAsState(
+                                if (authMode == AuthMode.SIGNUP) Color.Black else Color.White.copy(alpha = 0.75f),
+                                tween(180),
+                                label = "signupTextCol",
+                            )
+                            Text(
+                                text = stringResource(R.string.auth_tab_signup),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor,
+                            )
+                        }
                     }
                 }
 
                 Spacer(Modifier.height(18.dp))
 
-                // Error Banner
-                AnimatedVisibility(visible = errorMessage != null) {
+                // Error Banner with slide/fade animation
+                AnimatedVisibility(
+                    visible = errorMessage != null,
+                    enter = fadeIn(tween(200)) + slideInHorizontally { -20 },
+                    exit = fadeOut(tween(150)) + slideOutHorizontally { 20 },
+                ) {
                     errorMessage?.let { msg ->
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(Color(0xFFE53935).copy(alpha = 0.28f))
+                                .border(1.dp, Color(0xFFFF5252).copy(alpha = 0.45f), RoundedCornerShape(14.dp))
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                         ) {
                             Text(
@@ -304,224 +394,239 @@ fun OnboardingScreen(
                     }
                 }
 
-                // Dynamic Form Content
-                if (authMode == AuthMode.LOGIN) {
-                    // Log In Form
-                    AuthInputField(
-                        value = loginIdentifier,
-                        onValueChange = {
-                            loginIdentifier = it
-                            errorMessage = null
-                        },
-                        placeholder = "Username or Email",
-                        leadingIcon = Icons.Rounded.Person,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Next,
-                        ),
-                    )
+                // Animated Form Content (Smooth Left/Right Slide)
+                AnimatedContent(
+                    targetState = authMode,
+                    transitionSpec = {
+                        val forward = targetState == AuthMode.SIGNUP
+                        (slideInHorizontally(tween(280)) { if (forward) it / 2 else -it / 2 } + fadeIn(tween(260)))
+                            .togetherWith(slideOutHorizontally(tween(240)) { if (forward) -it / 2 else it / 2 } + fadeOut(tween(180)))
+                    },
+                    label = "formContent",
+                ) { mode ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        if (mode == AuthMode.LOGIN) {
+                            // Log In Form
+                            SmoothAuthInputField(
+                                value = loginIdentifier,
+                                onValueChange = {
+                                    loginIdentifier = it
+                                    errorMessage = null
+                                },
+                                placeholder = "Username or Email",
+                                leadingIcon = Icons.Rounded.Person,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Email,
+                                    imeAction = ImeAction.Next,
+                                ),
+                            )
 
-                    Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(12.dp))
 
-                    AuthInputField(
-                        value = loginPassword,
-                        onValueChange = {
-                            loginPassword = it
-                            errorMessage = null
-                        },
-                        placeholder = stringResource(R.string.auth_field_password),
-                        leadingIcon = Icons.Rounded.Lock,
-                        isPassword = true,
-                        passwordVisible = loginPasswordVisible,
-                        onTogglePassword = { loginPasswordVisible = !loginPasswordVisible },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Done,
-                        ),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                    )
+                            SmoothAuthInputField(
+                                value = loginPassword,
+                                onValueChange = {
+                                    loginPassword = it
+                                    errorMessage = null
+                                },
+                                placeholder = stringResource(R.string.auth_field_password),
+                                leadingIcon = Icons.Rounded.Lock,
+                                isPassword = true,
+                                passwordVisible = loginPasswordVisible,
+                                onTogglePassword = { loginPasswordVisible = !loginPasswordVisible },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Done,
+                                ),
+                                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                            )
 
-                    Spacer(Modifier.height(20.dp))
+                            Spacer(Modifier.height(20.dp))
 
-                    PillButton(
-                        label = stringResource(R.string.auth_btn_login),
-                        onClick = {
-                            focusManager.clearFocus()
-                            val cleanLogin = loginIdentifier.trim()
-                            val cleanPass = loginPassword
-                            if (cleanLogin.isBlank() || cleanPass.isBlank()) {
-                                errorMessage = "Please enter both username/email and password"
-                                return@PillButton
-                            }
-                            isLoading = true
-                            errorMessage = null
-                            coroutineScope.launch {
-                                val result = TuneslyCloudManager.login(cleanLogin, cleanPass)
-                                isLoading = false
-                                result.fold(
-                                    onSuccess = { user ->
-                                        onNameChosen(user.username)
-                                        onFinish()
-                                    },
-                                    onFailure = { err ->
-                                        errorMessage = err.message ?: "Login failed. Check your credentials."
-                                    },
-                                )
-                            }
-                        },
-                        primary = true,
-                        enabled = !isLoading && loginIdentifier.isNotBlank() && loginPassword.isNotBlank(),
-                        loading = isLoading,
-                    )
+                            AnimatedPillButton(
+                                label = stringResource(R.string.auth_btn_login),
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    val cleanLogin = loginIdentifier.trim()
+                                    val cleanPass = loginPassword
+                                    if (cleanLogin.isBlank() || cleanPass.isBlank()) {
+                                        errorMessage = "Please enter both username/email and password"
+                                        return@AnimatedPillButton
+                                    }
+                                    isLoading = true
+                                    errorMessage = null
+                                    coroutineScope.launch {
+                                        val result = TuneslyCloudManager.login(cleanLogin, cleanPass)
+                                        isLoading = false
+                                        result.fold(
+                                            onSuccess = { user ->
+                                                onNameChosen(user.username)
+                                                onFinish()
+                                            },
+                                            onFailure = { err ->
+                                                errorMessage = err.message ?: "Login failed. Check your credentials."
+                                            },
+                                        )
+                                    }
+                                },
+                                primary = true,
+                                enabled = !isLoading && loginIdentifier.isNotBlank() && loginPassword.isNotBlank(),
+                                loading = isLoading,
+                            )
 
-                    Spacer(Modifier.height(14.dp))
+                            Spacer(Modifier.height(14.dp))
 
-                    Text(
-                        text = stringResource(R.string.auth_switch_to_signup),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable {
-                                authMode = AuthMode.SIGNUP
-                                errorMessage = null
-                            }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
-                } else {
-                    // Sign Up Form (Name, Username, Email, Password)
-                    AuthInputField(
-                        value = fullName,
-                        onValueChange = {
-                            fullName = it
-                            errorMessage = null
-                        },
-                        placeholder = stringResource(R.string.auth_field_fullname) + " (e.g. Aarav Sharma)",
-                        leadingIcon = Icons.Rounded.Person,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Words,
-                            imeAction = ImeAction.Next,
-                        ),
-                    )
+                            Text(
+                                text = stringResource(R.string.auth_switch_to_signup),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        authMode = AuthMode.SIGNUP
+                                        errorMessage = null
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        } else {
+                            // Sign Up Form (Name, Username, Email, Password)
+                            SmoothAuthInputField(
+                                value = fullName,
+                                onValueChange = {
+                                    fullName = it
+                                    errorMessage = null
+                                },
+                                placeholder = stringResource(R.string.auth_field_fullname) + " (e.g. Aarav Sharma)",
+                                leadingIcon = Icons.Rounded.Person,
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Words,
+                                    imeAction = ImeAction.Next,
+                                ),
+                            )
 
-                    Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(12.dp))
 
-                    AuthInputField(
-                        value = signupUsername,
-                        onValueChange = {
-                            signupUsername = it.filterNot { c -> c.isWhitespace() }.lowercase()
-                            errorMessage = null
-                        },
-                        placeholder = stringResource(R.string.auth_field_username) + " (e.g. aarav)",
-                        leadingIcon = Icons.Rounded.AlternateEmail,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Ascii,
-                            imeAction = ImeAction.Next,
-                        ),
-                    )
+                            SmoothAuthInputField(
+                                value = signupUsername,
+                                onValueChange = {
+                                    signupUsername = it.filterNot { c -> c.isWhitespace() }.lowercase()
+                                    errorMessage = null
+                                },
+                                placeholder = stringResource(R.string.auth_field_username) + " (e.g. aarav)",
+                                leadingIcon = Icons.Rounded.AlternateEmail,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Ascii,
+                                    imeAction = ImeAction.Next,
+                                ),
+                            )
 
-                    Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(12.dp))
 
-                    AuthInputField(
-                        value = signupEmail,
-                        onValueChange = {
-                            signupEmail = it.trim()
-                            errorMessage = null
-                        },
-                        placeholder = stringResource(R.string.auth_field_email) + " (e.g. aarav@gmail.com)",
-                        leadingIcon = Icons.Rounded.Email,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Next,
-                        ),
-                    )
+                            SmoothAuthInputField(
+                                value = signupEmail,
+                                onValueChange = {
+                                    signupEmail = it.trim()
+                                    errorMessage = null
+                                },
+                                placeholder = stringResource(R.string.auth_field_email) + " (e.g. aarav@gmail.com)",
+                                leadingIcon = Icons.Rounded.Email,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Email,
+                                    imeAction = ImeAction.Next,
+                                ),
+                            )
 
-                    Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(12.dp))
 
-                    AuthInputField(
-                        value = signupPassword,
-                        onValueChange = {
-                            signupPassword = it
-                            errorMessage = null
-                        },
-                        placeholder = stringResource(R.string.auth_field_password) + " (min 6 characters)",
-                        leadingIcon = Icons.Rounded.Lock,
-                        isPassword = true,
-                        passwordVisible = signupPasswordVisible,
-                        onTogglePassword = { signupPasswordVisible = !signupPasswordVisible },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Done,
-                        ),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                    )
+                            SmoothAuthInputField(
+                                value = signupPassword,
+                                onValueChange = {
+                                    signupPassword = it
+                                    errorMessage = null
+                                },
+                                placeholder = stringResource(R.string.auth_field_password) + " (min 6 characters)",
+                                leadingIcon = Icons.Rounded.Lock,
+                                isPassword = true,
+                                passwordVisible = signupPasswordVisible,
+                                onTogglePassword = { signupPasswordVisible = !signupPasswordVisible },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Done,
+                                ),
+                                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                            )
 
-                    Spacer(Modifier.height(20.dp))
+                            Spacer(Modifier.height(20.dp))
 
-                    PillButton(
-                        label = stringResource(R.string.auth_btn_signup),
-                        onClick = {
-                            focusManager.clearFocus()
-                            val cleanName = fullName.trim()
-                            val cleanUser = signupUsername.trim()
-                            val cleanEmail = signupEmail.trim()
-                            val cleanPass = signupPassword
+                            AnimatedPillButton(
+                                label = stringResource(R.string.auth_btn_signup),
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    val cleanName = fullName.trim()
+                                    val cleanUser = signupUsername.trim()
+                                    val cleanEmail = signupEmail.trim()
+                                    val cleanPass = signupPassword
 
-                            if (cleanUser.length < 3) {
-                                errorMessage = "Username must be at least 3 characters"
-                                return@PillButton
-                            }
-                            if (!cleanEmail.contains("@") || !cleanEmail.contains(".")) {
-                                errorMessage = "Please enter a valid email address"
-                                return@PillButton
-                            }
-                            if (cleanPass.length < 6) {
-                                errorMessage = "Password must be at least 6 characters"
-                                return@PillButton
-                            }
+                                    if (cleanUser.length < 3) {
+                                        errorMessage = "Username must be at least 3 characters"
+                                        return@AnimatedPillButton
+                                    }
+                                    if (!cleanEmail.contains("@") || !cleanEmail.contains(".")) {
+                                        errorMessage = "Please enter a valid email address"
+                                        return@AnimatedPillButton
+                                    }
+                                    if (cleanPass.length < 6) {
+                                        errorMessage = "Password must be at least 6 characters"
+                                        return@AnimatedPillButton
+                                    }
 
-                            isLoading = true
-                            errorMessage = null
-                            coroutineScope.launch {
-                                val result = TuneslyCloudManager.register(
-                                    username = cleanUser,
-                                    email = cleanEmail,
-                                    password = cleanPass,
-                                    displayName = cleanName.ifBlank { cleanUser },
-                                )
-                                isLoading = false
-                                result.fold(
-                                    onSuccess = { user ->
-                                        onNameChosen(cleanName.ifBlank { user.username })
-                                        onFinish()
-                                    },
-                                    onFailure = { err ->
-                                        errorMessage = err.message ?: "Registration failed. Try a different username."
-                                    },
-                                )
-                            }
-                        },
-                        primary = true,
-                        enabled = !isLoading && signupUsername.isNotBlank() && signupEmail.isNotBlank() && signupPassword.isNotBlank(),
-                        loading = isLoading,
-                    )
+                                    isLoading = true
+                                    errorMessage = null
+                                    coroutineScope.launch {
+                                        val result = TuneslyCloudManager.register(
+                                            username = cleanUser,
+                                            email = cleanEmail,
+                                            password = cleanPass,
+                                            displayName = cleanName.ifBlank { cleanUser },
+                                        )
+                                        isLoading = false
+                                        result.fold(
+                                            onSuccess = { user ->
+                                                onNameChosen(cleanName.ifBlank { user.username })
+                                                onFinish()
+                                            },
+                                            onFailure = { err ->
+                                                errorMessage = err.message ?: "Registration failed. Try a different username."
+                                            },
+                                        )
+                                    }
+                                },
+                                primary = true,
+                                enabled = !isLoading && signupUsername.isNotBlank() && signupEmail.isNotBlank() && signupPassword.isNotBlank(),
+                                loading = isLoading,
+                            )
 
-                    Spacer(Modifier.height(14.dp))
+                            Spacer(Modifier.height(14.dp))
 
-                    Text(
-                        text = stringResource(R.string.auth_switch_to_login),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable {
-                                authMode = AuthMode.LOGIN
-                                errorMessage = null
-                            }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
+                            Text(
+                                text = stringResource(R.string.auth_switch_to_login),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        authMode = AuthMode.LOGIN
+                                        errorMessage = null
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(20.dp))
@@ -556,7 +661,7 @@ fun OnboardingScreen(
                 Spacer(Modifier.height(18.dp))
 
                 // Guest / Skip Option
-                PillButton(
+                AnimatedPillButton(
                     label = stringResource(R.string.auth_continue_guest),
                     onClick = {
                         focusManager.clearFocus()
@@ -569,7 +674,7 @@ fun OnboardingScreen(
                 Spacer(Modifier.height(12.dp))
 
                 // Optional Google Sign-In
-                PillButton(
+                AnimatedPillButton(
                     label = stringResource(R.string.onboarding_sign_in_google),
                     onClick = {
                         focusManager.clearFocus()
@@ -592,10 +697,10 @@ fun OnboardingScreen(
 }
 
 /**
- * Sleek frosted input field with leading icon and optional password toggle.
+ * Animated input field with smooth glowing border on focus and icon accenting.
  */
 @Composable
-private fun AuthInputField(
+private fun SmoothAuthInputField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
@@ -607,6 +712,24 @@ private fun AuthInputField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    val borderColor by animateColorAsState(
+        targetValue = if (isFocused) Color.White.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.14f),
+        animationSpec = tween(220),
+        label = "inputBorder",
+    )
+    val bgColor by animateColorAsState(
+        targetValue = if (isFocused) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.12f),
+        animationSpec = tween(220),
+        label = "inputBg",
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (isFocused) Color.White else Color.White.copy(alpha = 0.65f),
+        animationSpec = tween(220),
+        label = "iconTint",
+    )
+
     val style = MaterialTheme.typography.bodyLarge.copy(
         fontSize = 16.sp,
         color = Color.White,
@@ -618,14 +741,15 @@ private fun AuthInputField(
             .fillMaxWidth()
             .height(54.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.13f))
+            .background(bgColor)
+            .border(1.2.dp, borderColor, RoundedCornerShape(18.dp))
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = leadingIcon,
             contentDescription = null,
-            tint = Color.White.copy(alpha = 0.65f),
+            tint = iconTint,
             modifier = Modifier.size(20.dp),
         )
 
@@ -658,7 +782,9 @@ private fun AuthInputField(
                 },
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { isFocused = it.isFocused },
             )
         }
 
@@ -670,7 +796,7 @@ private fun AuthInputField(
                 Icon(
                     imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
                     contentDescription = "Toggle password visibility",
-                    tint = Color.White.copy(alpha = 0.65f),
+                    tint = iconTint,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -679,10 +805,10 @@ private fun AuthInputField(
 }
 
 /**
- * Capsule pill action button.
+ * Capsule pill action button with tactile spring animation.
  */
 @Composable
-private fun PillButton(
+private fun AnimatedPillButton(
     label: String,
     onClick: () -> Unit,
     primary: Boolean,
@@ -693,8 +819,8 @@ private fun PillButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        if (pressed && enabled && !loading) 0.97f else 1f,
-        spring(stiffness = 900f),
+        if (pressed && enabled && !loading) 0.96f else 1f,
+        spring(stiffness = 800f, dampingRatio = 0.75f),
         label = "pillScale",
     )
     val alpha by animateFloatAsState(

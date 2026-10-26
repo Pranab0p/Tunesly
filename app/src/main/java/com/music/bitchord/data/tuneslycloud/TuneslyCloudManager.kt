@@ -56,6 +56,8 @@ data class TuneslyChatMessage(
     val isMine: Boolean,
     val text: String,
     val trackAttachment: TuneslyCloudTrack? = null,
+    val playlistAttachment: TuneslyPublicPlaylist? = null,
+    val isEncrypted: Boolean = false,
     val read: Boolean = false,
     val createdAt: String = "",
 )
@@ -660,6 +662,7 @@ object TuneslyCloudManager {
     suspend fun getChatThread(username: String): Result<List<TuneslyChatMessage>> = withContext(Dispatchers.IO) {
         val token = AppSettings.tuneslyToken.value
         if (token.isBlank()) return@withContext Result.failure(Exception("Please log in to view chat"))
+        val currentUsername = AppSettings.tuneslyUsername.value
         executeRequest(
             "/messages/thread/${username.trim()}",
             builder = { url ->
@@ -685,12 +688,33 @@ object TuneslyCloudManager {
                             )
                         } else null
 
+                        val plObj = obj.optJSONObject("playlistAttachment")
+                        val playlist = if (plObj != null && plObj.optString("playlistId").isNotBlank()) {
+                            TuneslyPublicPlaylist(
+                                id = plObj.optString("playlistId"),
+                                name = plObj.optString("name"),
+                                description = plObj.optString("description"),
+                                trackCount = plObj.optInt("trackCount", 0),
+                                artworkUrl = plObj.optString("artworkUrl"),
+                            )
+                        } else null
+
+                        val rawText = obj.optString("text")
+                        val isEnc = TuneslyEncryption.isEncrypted(rawText)
+                        val decrypted = if (isEnc) {
+                            TuneslyEncryption.decrypt(rawText, currentUsername, username)
+                        } else {
+                            rawText
+                        }
+
                         list.add(
                             TuneslyChatMessage(
                                 id = obj.optString("id"),
                                 isMine = obj.optBoolean("isMine", false),
-                                text = obj.optString("text"),
+                                text = decrypted,
                                 trackAttachment = track,
+                                playlistAttachment = playlist,
+                                isEncrypted = isEnc,
                                 read = obj.optBoolean("read", false),
                                 createdAt = obj.optString("createdAt"),
                             ),
@@ -708,18 +732,36 @@ object TuneslyCloudManager {
         recipientUsername: String,
         text: String,
         attachedTrack: TuneslyCloudTrack? = null,
+        attachedPlaylist: TuneslyPublicPlaylist? = null,
     ): Result<TuneslyChatMessage> = withContext(Dispatchers.IO) {
         val token = AppSettings.tuneslyToken.value
         if (token.isBlank()) return@withContext Result.failure(Exception("Please log in to send message"))
+        val currentUsername = AppSettings.tuneslyUsername.value
+
+        // End-to-End Encrypt text before sending over network
+        val cleanText = text.trim()
+        val encryptedText = if (cleanText.isNotBlank()) {
+            TuneslyEncryption.encrypt(cleanText, currentUsername, recipientUsername)
+        } else ""
+
         val json = JSONObject().apply {
             put("recipientUsername", recipientUsername.trim())
-            put("text", text.trim())
+            put("text", encryptedText)
             if (attachedTrack != null) {
                 put("trackAttachment", JSONObject().apply {
                     put("trackId", attachedTrack.trackId)
                     put("title", attachedTrack.title)
                     put("artist", attachedTrack.artist)
                     put("artworkUrl", attachedTrack.artworkUrl)
+                })
+            }
+            if (attachedPlaylist != null) {
+                put("playlistAttachment", JSONObject().apply {
+                    put("playlistId", attachedPlaylist.id)
+                    put("name", attachedPlaylist.name)
+                    put("description", attachedPlaylist.description)
+                    put("trackCount", attachedPlaylist.trackCount)
+                    put("artworkUrl", attachedPlaylist.artworkUrl)
                 })
             }
         }
@@ -740,8 +782,10 @@ object TuneslyCloudManager {
                         TuneslyChatMessage(
                             id = msgObj.optString("id"),
                             isMine = true,
-                            text = msgObj.optString("text"),
+                            text = cleanText,
                             trackAttachment = attachedTrack,
+                            playlistAttachment = attachedPlaylist,
+                            isEncrypted = true,
                             read = false,
                             createdAt = msgObj.optString("createdAt"),
                         ),

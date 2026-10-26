@@ -2823,6 +2823,7 @@ private fun BitChordApp(
                                 currentPlayingSong = currentSong,
                                 onOpenProfile = { navigator.push(AppRoute.UserProfile(it)) },
                                 onPlayTrack = { song -> play(listOf(song), 0) },
+                                onOpenPlaylist = { id -> viewModel.openDetail(id, "Shared Playlist", "", null, BrowseType.PLAYLIST) },
                                 contentPadding = listPadding,
                             )
                         } else if (pageRoute is AppRoute.UserProfile) {
@@ -4112,7 +4113,7 @@ private fun BitChordApp(
             val share: () -> Unit = {
                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/watch?v=${song.videoId}")
+                    putExtra(Intent.EXTRA_TEXT, "🎶 Listen to \"${song.title}\" by ${song.artist} on Tunesly:\nhttps://music.youtube.com/watch?v=${song.videoId}")
                 }
                 context.startActivity(Intent.createChooser(sendIntent, song.title))
                 songActions = null
@@ -4672,7 +4673,7 @@ private fun BitChordApp(
                             }
                             val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, url)
+                                putExtra(Intent.EXTRA_TEXT, "🎶 Listen to \"${target.title}\" on Tunesly:\n$url")
                             }
                             context.startActivity(Intent.createChooser(sendIntent, target.title))
                             browseActions = null

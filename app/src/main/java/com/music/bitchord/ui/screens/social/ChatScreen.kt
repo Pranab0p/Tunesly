@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.screens.social
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,11 +24,18 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PlaylistPlay
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -36,6 +44,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,9 +65,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.tuneslycloud.TuneslyChatMessage
 import com.music.bitchord.data.tuneslycloud.TuneslyCloudManager
 import com.music.bitchord.data.tuneslycloud.TuneslyCloudTrack
+import com.music.bitchord.data.tuneslycloud.TuneslyPublicPlaylist
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -68,12 +79,18 @@ fun ChatScreen(
     currentPlayingSong: Song?,
     onOpenProfile: (String) -> Unit,
     onPlayTrack: (Song) -> Unit,
+    onOpenPlaylist: ((String) -> Unit)? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     val messages = remember { mutableStateListOf<TuneslyChatMessage>() }
     var textInput by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var attachedSong by remember { mutableStateOf<Song?>(null) }
+    var attachedPlaylist by remember { mutableStateOf<TuneslyPublicPlaylist?>(null) }
+    var showAttachmentDialog by remember { mutableStateOf(false) }
+    var userPlaylists by remember { mutableStateOf<List<TuneslyPublicPlaylist>>(emptyList()) }
+    var loadingPlaylists by remember { mutableStateOf(false) }
+
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -95,11 +112,12 @@ fun ChatScreen(
 
     val onSend = {
         val trimmed = textInput.trim()
-        val toAttach = attachedSong
-        if ((trimmed.isNotBlank() || toAttach != null) && !sending) {
+        val toAttachSong = attachedSong
+        val toAttachPlaylist = attachedPlaylist
+        if ((trimmed.isNotBlank() || toAttachSong != null || toAttachPlaylist != null) && !sending) {
             sending = true
             scope.launch {
-                val cloudTrack = toAttach?.let {
+                val cloudTrack = toAttachSong?.let {
                     TuneslyCloudTrack(
                         trackId = it.videoId,
                         title = it.title,
@@ -107,10 +125,16 @@ fun ChatScreen(
                         artworkUrl = it.thumbnailUrl.orEmpty(),
                     )
                 }
-                TuneslyCloudManager.sendMessage(recipientUsername, trimmed, cloudTrack).onSuccess { sentMsg ->
+                TuneslyCloudManager.sendMessage(
+                    recipientUsername = recipientUsername,
+                    text = trimmed,
+                    attachedTrack = cloudTrack,
+                    attachedPlaylist = toAttachPlaylist,
+                ).onSuccess { sentMsg ->
                     messages.add(sentMsg)
                     textInput = ""
                     attachedSong = null
+                    attachedPlaylist = null
                     sending = false
                     listState.animateScrollToItem(messages.lastIndex)
                 }.onFailure {
@@ -138,7 +162,7 @@ fun ChatScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary),
                     contentAlignment = Alignment.Center,
@@ -147,10 +171,11 @@ fun ChatScreen(
                         text = recipientUsername.take(1).uppercase(),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onPrimary,
+                        fontSize = 17.sp,
                     )
                 }
 
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(12.dp))
 
                 Column {
                     Text(
@@ -167,6 +192,32 @@ fun ChatScreen(
             }
         }
 
+        // End-to-End Encryption Security Banner
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                .padding(vertical = 6.dp, horizontal = 16.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Lock,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                modifier = Modifier.size(12.dp),
+            )
+            Spacer(Modifier.width(5.dp))
+            Text(
+                text = "End-to-end encrypted • Private to this chat",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+            )
+        }
+
         // Messages Feed
         LazyColumn(
             state = listState,
@@ -180,6 +231,7 @@ fun ChatScreen(
                 MessageBubble(
                     message = msg,
                     onPlayTrack = onPlayTrack,
+                    onOpenPlaylist = onOpenPlaylist,
                 )
             }
         }
@@ -203,20 +255,60 @@ fun ChatScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Sharing: ${song.title} • ${song.artist}",
+                        text = "Song: ${song.title} • ${song.artist}",
                         style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    Text(
-                        text = "Remove",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.error,
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = "Remove",
+                        tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier
-                            .clickable { attachedSong = null }
-                            .padding(4.dp),
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .clickable { attachedSong = null },
+                    )
+                }
+            }
+        }
+
+        // Attached Playlist Chip Preview
+        attachedPlaylist?.let { pl ->
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Rounded.PlaylistPlay,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Playlist: ${pl.name} (${pl.trackCount} tracks)",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = "Remove",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .clickable { attachedPlaylist = null },
                     )
                 }
             }
@@ -239,59 +331,93 @@ fun ChatScreen(
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Attach Playing Song Button
+                // Attach Music or Playlist Button
                 IconButton(
                     onClick = {
-                        if (currentPlayingSong != null) {
-                            attachedSong = currentPlayingSong
+                        showAttachmentDialog = true
+                        if (userPlaylists.isEmpty() && !loadingPlaylists) {
+                            val myUser = AppSettings.tuneslyUsername.value
+                            if (myUser.isNotBlank()) {
+                                loadingPlaylists = true
+                                scope.launch {
+                                    TuneslyCloudManager.getUserProfile(myUser).onSuccess { prof ->
+                                        userPlaylists = prof.playlists
+                                    }
+                                    loadingPlaylists = false
+                                }
+                            }
                         }
                     },
-                    enabled = currentPlayingSong != null,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = if (attachedSong != null || attachedPlaylist != null) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ),
+                    modifier = Modifier.size(42.dp),
                 ) {
                     Icon(
-                        Icons.Rounded.MusicNote,
-                        contentDescription = "Attach playing song",
-                        tint = if (currentPlayingSong != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        imageVector = if (attachedPlaylist != null) Icons.Rounded.PlaylistPlay else Icons.Rounded.Add,
+                        contentDescription = "Attach song or playlist",
+                        tint = if (attachedSong != null || attachedPlaylist != null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(22.dp),
                     )
                 }
 
-                // Text Input
+                Spacer(Modifier.width(8.dp))
+
                 OutlinedTextField(
                     value = textInput,
                     onValueChange = { textInput = it },
-                    placeholder = { Text("Message @$recipientUsername...") },
-                    modifier = Modifier.weight(1f),
+                    placeholder = {
+                        Text(
+                            text = "Message (encrypted)...",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                    singleLine = false,
+                    maxLines = 4,
                     shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                     ),
-                    maxLines = 4,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSend() }),
+                    modifier = Modifier.weight(1f),
                 )
 
                 Spacer(Modifier.width(8.dp))
 
-                // Send Button
                 IconButton(
                     onClick = onSend,
-                    colors = IconButtonDefaults.filledIconButtonColors(
+                    enabled = !sending && (textInput.isNotBlank() || attachedSong != null || attachedPlaylist != null),
+                    colors = IconButtonDefaults.iconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                     ),
-                    enabled = (textInput.isNotBlank() || attachedSong != null) && !sending,
+                    modifier = Modifier.size(42.dp),
                 ) {
                     if (sending) {
                         CircularProgressIndicator(
                             color = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
+                            modifier = Modifier.size(18.dp),
                         )
                     } else {
                         Icon(
-                            Icons.AutoMirrored.Rounded.Send,
+                            imageVector = Icons.AutoMirrored.Rounded.Send,
                             contentDescription = "Send",
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                            tint = if (textInput.isNotBlank() || attachedSong != null || attachedPlaylist != null) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            },
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -299,12 +425,143 @@ fun ChatScreen(
             }
         }
     }
+
+    // Attachment Chooser Dialog (Song or Playlist)
+    if (showAttachmentDialog) {
+        AlertDialog(
+            onDismissRequest = { showAttachmentDialog = false },
+            title = {
+                Text(
+                    text = "Share Music",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Option 1: Current Playing Song
+                    if (currentPlayingSong != null) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    attachedSong = currentPlayingSong
+                                    attachedPlaylist = null
+                                    showAttachmentDialog = false
+                                },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.MusicNote,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Current Playing Song",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    )
+                                    Text(
+                                        text = "${currentPlayingSong.title} • ${currentPlayingSong.artist}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                    }
+
+                    // Option 2: Share Playlist
+                    Text(
+                        text = "Share a Playlist",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+
+                    if (loadingPlaylists) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
+                    } else if (userPlaylists.isEmpty()) {
+                        Text(
+                            text = "No public playlists found on profile yet. Create a playlist to share!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(vertical = 8.dp),
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            userPlaylists.take(5).forEach { pl ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            attachedPlaylist = pl
+                                            attachedSong = null
+                                            showAttachmentDialog = false
+                                        },
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Folder,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = pl.name,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                text = "${pl.trackCount} tracks",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAttachmentDialog = false }) {
+                    Text("Close")
+                }
+            },
+        )
+    }
 }
 
 @Composable
 private fun MessageBubble(
     message: TuneslyChatMessage,
     onPlayTrack: (Song) -> Unit,
+    onOpenPlaylist: ((String) -> Unit)? = null,
 ) {
     val isMine = message.isMine
     val bubbleShape = if (isMine) {
@@ -332,7 +589,7 @@ private fun MessageBubble(
         Surface(
             shape = bubbleShape,
             color = bubbleColor,
-            modifier = Modifier.fillMaxWidth(0.82f),
+            modifier = Modifier.fillMaxWidth(0.85f),
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 // Attached Track Card
@@ -351,7 +608,7 @@ private fun MessageBubble(
                                         thumbnailUrl = track.artworkUrl,
                                         durationText = null,
                                         fromAutoplay = false,
-                                    )
+                                    ),
                                 )
                             },
                     ) {
@@ -392,12 +649,71 @@ private fun MessageBubble(
                             )
                         }
                     }
+                    if (message.text.isNotBlank() || message.playlistAttachment != null) {
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+
+                // Attached Playlist Card
+                message.playlistAttachment?.let { pl ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isMine) MaterialTheme.colorScheme.surface.copy(alpha = 0.25f) else MaterialTheme.colorScheme.background,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onOpenPlaylist?.invoke(pl.id)
+                            },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Folder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = pl.name,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = contentColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = "${pl.trackCount} tracks • Shared Playlist",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = contentColor.copy(alpha = 0.75f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Icon(
+                                Icons.Rounded.PlayArrow,
+                                contentDescription = "Open",
+                                tint = contentColor,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
                     if (message.text.isNotBlank()) {
                         Spacer(Modifier.height(8.dp))
                     }
                 }
 
-                // Text
+                // Text Message
                 if (message.text.isNotBlank()) {
                     Text(
                         text = message.text,
@@ -406,16 +722,29 @@ private fun MessageBubble(
                     )
                 }
 
-                // Time & Status
+                // Time & Status Row (Lock for E2EE + Read receipts)
                 Row(
-                    modifier = Modifier.align(Alignment.End),
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(top = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (message.isEncrypted) {
+                        Icon(
+                            imageVector = Icons.Rounded.Lock,
+                            contentDescription = "Encrypted",
+                            tint = contentColor.copy(alpha = 0.55f),
+                            modifier = Modifier
+                                .size(11.dp)
+                                .padding(end = 4.dp),
+                        )
+                    }
+
                     if (isMine) {
                         Icon(
                             imageVector = if (message.read) Icons.Rounded.DoneAll else Icons.Rounded.Done,
                             contentDescription = if (message.read) "Read" else "Sent",
-                            tint = contentColor.copy(alpha = 0.7f),
+                            tint = contentColor.copy(alpha = 0.75f),
                             modifier = Modifier.size(14.dp),
                         )
                     }
