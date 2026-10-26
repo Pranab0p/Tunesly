@@ -161,7 +161,7 @@ object AudioCache {
      * skips into a single fetch of wherever the listener lands, and leaves the
      * player's opening burst holding the cache entry alone — see [fetchWhole].
      */
-    private const val PREFETCH_DELAY_MS = 8_000L
+    private const val PREFETCH_DELAY_MS = 1_500L
 
     /** How long to leave the player alone with an entry before trying again. */
     private const val RETRY_DELAY_MS = 5_000L

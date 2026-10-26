@@ -504,7 +504,7 @@ object StreamResolver {
                 TrackLog.w(TAG, "InnerTubeX failed for $videoId: ${e.javaClass.simpleName}: ${e.message}")
                 return null
             } ?: return null
-            val verdict = timed("$videoId InnerTubeX ${found.profileId} probe") { probe(found.url) }
+            val verdict = if (attempt == 0) Probe.OK else timed("$videoId InnerTubeX ${found.profileId} probe") { probe(found.url) }
             if (verdict == Probe.OK) {
                 TrackLog.d(TAG, "resolved $videoId via InnerTubeX ${found.profileId} @ ${found.kbps}kbps")
                 return Stream(found.url, found.kbps, found.mimeType, found.loudnessDb)
@@ -905,7 +905,7 @@ object StreamResolver {
             .build()
     }
 
-    private const val PROBE_TIMEOUT_SECONDS = 6L
+    private const val PROBE_TIMEOUT_SECONDS = 3L
 
     /** Where googlevideo stops authorising some clients' URLs (InnerTubeX: "CDN 403 after 1 MiB"). */
     private const val AUTH_BOUNDARY_BYTES = 1024L * 1024
