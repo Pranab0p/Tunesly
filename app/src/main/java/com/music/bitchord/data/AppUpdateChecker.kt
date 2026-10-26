@@ -42,7 +42,12 @@ object AppUpdateChecker {
 
     private const val CACHE_SUBDIR = "updates"
 
-    private const val LATEST_RELEASE_URL =
+    private val UPDATE_ENDPOINTS = listOf(
+        "http://194.127.179.229:5050/api/app/version",
+        "https://vibestudio.blog/tunesly/api/app/version",
+    )
+
+    private const val GITHUB_RELEASE_URL =
         "https://api.github.com/repos/kushagrasinghx/BitChord/releases/latest"
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -66,8 +71,32 @@ object AppUpdateChecker {
     private var downloadCancelled = false
 
     suspend fun check() = withContext(Dispatchers.IO) {
+        // 1. Try Tunesly Cloud VPS endpoint first
+        for (endpoint in UPDATE_ENDPOINTS) {
+            try {
+                val req = Request.Builder().url(endpoint).build()
+                val body = Http.client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) resp.body?.string() else null
+                }
+                if (body != null) {
+                    val obj = json.parseToJsonElement(body) as? JsonObject
+                    if (obj != null) {
+                        val ver = obj["version"]?.jsonPrimitive?.contentOrNull?.removePrefix("v")
+                        val apk = obj["apkUrl"]?.jsonPrimitive?.contentOrNull
+                        val relUrl = obj["releaseUrl"]?.jsonPrimitive?.contentOrNull ?: "https://vibestudio.blog/tunesly"
+                        val notes = obj["notes"]?.jsonPrimitive?.contentOrNull
+                        if (ver != null && isNewer(ver, BuildConfig.VERSION_NAME)) {
+                            _available.value = UpdateInfo(ver, relUrl, apk, notes)
+                            return@withContext
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Fallback to GitHub Releases if needed
         runCatching {
-            val request = Request.Builder().url(LATEST_RELEASE_URL).build()
+            val request = Request.Builder().url(GITHUB_RELEASE_URL).build()
             val body = Http.client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) null else response.body?.string()
             } ?: return@runCatching
