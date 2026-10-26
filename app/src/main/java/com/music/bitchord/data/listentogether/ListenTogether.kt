@@ -1478,15 +1478,24 @@ object ListenTogether {
             )
         }
         val store = BitChordApplication.authStore
-        if (!store.isSignedIn) return null
-        val account = store.activeSession ?: return null
+        val devId = deviceId()
+        val defaultName = "User ${devId.takeLast(4).uppercase()}"
+        val guestName = nickname.trim().takeIf { it.isNotBlank() } ?: defaultName
+        val guestIdentity = Identity(
+            userId = sha256("guest:$devId").take(32),
+            deviceId = devId,
+            name = guestName,
+            avatar = null,
+        )
+        if (!store.isSignedIn) return guestIdentity
+        val account = store.activeSession ?: return guestIdentity
         val profile = account.profiles.firstOrNull { it.profileId == account.activeProfileId }
             ?: account.profiles.firstOrNull()
         val name = nickname.trim().takeIf { it.isNotBlank() }
             ?: profile?.name?.takeIf { it.isNotBlank() }
             ?: account.name.takeIf { it.isNotBlank() }
             ?: account.email.substringBefore('@').takeIf { it.isNotBlank() }
-            ?: return null
+            ?: guestName
         return Identity(
             userId = sha256("${account.accountId}:${profile?.profileId.orEmpty()}").take(32),
             deviceId = deviceId(),
