@@ -3540,6 +3540,7 @@ class PlaybackService : MediaLibraryService() {
         listenBrainzDurationMs = durationMs
         if (newSong != null && exoPlayer.isPlaying) {
             submitListenBrainzPlayingNow(newSong, 0L, durationMs)
+            com.music.bitchord.data.taste.UserTasteProfile.recordPlay(newSong)
         }
 
         // The renderer is still configured for the track that just ended at

@@ -1833,6 +1833,141 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 } catch (_: Exception) {}
             }
+            // 1. Jump Back In (Local History without Google account)
+            if (!_signedIn.value) {
+                val recent = com.music.bitchord.data.taste.UserTasteProfile.getRecentTracks()
+                if (recent.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
+                    val items = recent.take(15).map { tr ->
+                        ShelfItem(
+                            title = tr.title,
+                            subtitle = tr.artist,
+                            thumbnailUrl = tr.thumbnailUrl.ifBlank { "https://i.ytimg.com/vi/${tr.videoId}/hqdefault.jpg" },
+                            videoId = tr.videoId,
+                            browseId = null,
+                        )
+                    }
+                    val shelf = HomeShelf(
+                        title = "Jump Back In",
+                        subtitle = "Continue where you left off",
+                        items = items,
+                    )
+                    publishHomeShelves(listOf(shelf), prepend = true)
+                }
+            }
+
+            // 2. Because You Listened To [Seed Song]
+            launch {
+                try {
+                    val seed = com.music.bitchord.data.taste.UserTasteProfile.getLastPlayedSeed()
+                    if (seed != null) {
+                        YtMusicRepository.radio(seed.videoId).onSuccess { radioSongs ->
+                            if (isCurrentHomeLoad(identity, generation)) {
+                                val items = radioSongs
+                                    .filter { it.videoId != seed.videoId }
+                                    .take(15)
+                                    .map { s ->
+                                        ShelfItem(
+                                            title = s.title,
+                                            subtitle = s.artist,
+                                            thumbnailUrl = s.thumbnailUrl,
+                                            videoId = s.videoId,
+                                            browseId = null,
+                                        )
+                                    }
+                                if (items.isNotEmpty()) {
+                                    val shelf = HomeShelf(
+                                        title = "Because You Listened To \"${seed.title}\"",
+                                        subtitle = "Similar vibe • ${seed.artist}",
+                                        items = items,
+                                    )
+                                    publishHomeShelves(listOf(shelf), prepend = true)
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 3. Daily Mix 1: Romantic & Soulful
+            launch {
+                try {
+                    val topArtists = com.music.bitchord.data.taste.UserTasteProfile.getTopArtists()
+                    val romanticArtist = topArtists.firstOrNull() ?: "Arijit Singh"
+                    val query = "$romanticArtist romantic love songs hits"
+                    YtMusicRepository.search(query, SearchFilter.SONGS).onSuccess { results ->
+                        val items = results.filterIsInstance<SearchResult.Track>().map { tr ->
+                            ShelfItem(
+                                title = tr.song.title,
+                                subtitle = tr.song.artist,
+                                thumbnailUrl = tr.song.thumbnailUrl,
+                                videoId = tr.song.videoId,
+                                browseId = null,
+                            )
+                        }
+                        if (items.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
+                            val shelf = HomeShelf(
+                                title = "Daily Mix 1 • Romantic & Soulful",
+                                subtitle = "Made for you • Featuring $romanticArtist",
+                                items = items.take(15),
+                            )
+                            publishHomeShelves(listOf(shelf))
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 4. Daily Mix 2: Chill & Lofi
+            launch {
+                try {
+                    val query = "Hindi Indie chill lofi songs Anuv Jain Prateek Kuhad"
+                    YtMusicRepository.search(query, SearchFilter.SONGS).onSuccess { results ->
+                        val items = results.filterIsInstance<SearchResult.Track>().map { tr ->
+                            ShelfItem(
+                                title = tr.song.title,
+                                subtitle = tr.song.artist,
+                                thumbnailUrl = tr.song.thumbnailUrl,
+                                videoId = tr.song.videoId,
+                                browseId = null,
+                            )
+                        }
+                        if (items.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
+                            val shelf = HomeShelf(
+                                title = "Daily Mix 2 • Chill & Lofi",
+                                subtitle = "Relaxing acoustic & indie vibes",
+                                items = items.take(15),
+                            )
+                            publishHomeShelves(listOf(shelf))
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 5. Daily Mix 3: High Energy & Hits
+            launch {
+                try {
+                    val query = "Punjabi Hindi party dance energetic hits"
+                    YtMusicRepository.search(query, SearchFilter.SONGS).onSuccess { results ->
+                        val items = results.filterIsInstance<SearchResult.Track>().map { tr ->
+                            ShelfItem(
+                                title = tr.song.title,
+                                subtitle = tr.song.artist,
+                                thumbnailUrl = tr.song.thumbnailUrl,
+                                videoId = tr.song.videoId,
+                                browseId = null,
+                            )
+                        }
+                        if (items.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
+                            val shelf = HomeShelf(
+                                title = "Daily Mix 3 • High Energy & Hits",
+                                subtitle = "Upbeat dance & energetic bangers",
+                                items = items.take(15),
+                            )
+                            publishHomeShelves(listOf(shelf))
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
             YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
                 launch {
                     try {
