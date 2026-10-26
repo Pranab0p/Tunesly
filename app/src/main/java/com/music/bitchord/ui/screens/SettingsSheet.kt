@@ -190,6 +190,7 @@ fun SettingsScreen(
     onSources: () -> Unit,
     onListenTogether: () -> Unit,
     onMessages: () -> Unit = {},
+    onOpenProfile: (String) -> Unit = {},
     onWearOs: () -> Unit,
     onSpotifyCanvasAuth: () -> Unit,
     onAppLanguage: () -> Unit,
@@ -443,6 +444,21 @@ fun SettingsScreen(
                     trailing = { Chevron() },
                     onClick = onMessages,
                 )
+            }
+            if (tuneslyToken.isNotBlank()) {
+                RowDivider()
+                row("My Public Profile", "profile", "instagram", "user", "stats") {
+                    SettingsRow(
+                        icon = Icons.Rounded.Person,
+                        title = "My Public Profile",
+                        subtitle = if (tuneslyUsername.isNotBlank()) "@$tuneslyUsername (Instagram View)" else "View public profile",
+                        trailing = { Chevron() },
+                        onClick = {
+                            if (tuneslyUsername.isNotBlank()) onOpenProfile(tuneslyUsername)
+                            else showTuneslyProfileDialogInSettings = true
+                        },
+                    )
+                }
             }
             RowDivider()
 
@@ -1902,7 +1918,10 @@ fun SettingsScreen(
         TuneslyAuthDialog(onDismiss = { showTuneslyAuthDialogInSettings = false })
     }
     if (showTuneslyProfileDialogInSettings) {
-        TuneslyProfileDialog(onDismiss = { showTuneslyProfileDialogInSettings = false })
+        TuneslyProfileDialog(
+            onDismiss = { showTuneslyProfileDialogInSettings = false },
+            onViewPublicProfile = onOpenProfile,
+        )
     }
 }
 

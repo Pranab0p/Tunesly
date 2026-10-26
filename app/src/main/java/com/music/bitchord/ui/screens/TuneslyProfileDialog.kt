@@ -18,11 +18,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.Logout
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -53,7 +55,10 @@ import com.music.bitchord.data.tuneslycloud.TuneslyUser
 import kotlinx.coroutines.launch
 
 @Composable
-fun TuneslyProfileDialog(onDismiss: () -> Unit) {
+fun TuneslyProfileDialog(
+    onDismiss: () -> Unit,
+    onViewPublicProfile: ((String) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val username by AppSettings.tuneslyUsername.collectAsStateWithLifecycle()
@@ -238,6 +243,22 @@ fun TuneslyProfileDialog(onDismiss: () -> Unit) {
                         Icon(Icons.Rounded.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Sync with VPS Now")
+                    }
+                }
+
+                // View Instagram-Style Public Profile
+                if (onViewPublicProfile != null && username.isNotBlank()) {
+                    FilledTonalButton(
+                        onClick = {
+                            onDismiss()
+                            onViewPublicProfile(username)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("View Profile (Instagram Style)")
                     }
                 }
 

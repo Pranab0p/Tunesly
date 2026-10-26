@@ -30,6 +30,7 @@ data class TuneslyPublicPlaylist(
     val name: String,
     val description: String = "",
     val trackCount: Int = 0,
+    val artworkUrl: String = "",
 )
 
 data class TuneslyPublicProfile(
@@ -39,6 +40,10 @@ data class TuneslyPublicProfile(
     val bio: String = "",
     val totalPlayTimeSeconds: Long = 0,
     val memberSince: String = "",
+    val followersCount: Int = 0,
+    val followingCount: Int = 0,
+    val isFollowing: Boolean = false,
+    val isMe: Boolean = false,
     val topArtists: List<String> = emptyList(),
     val recentTracks: List<TuneslyCloudTrack> = emptyList(),
     val playlists: List<TuneslyPublicPlaylist> = emptyList(),
@@ -438,10 +443,85 @@ object TuneslyCloudManager {
         )
     }
 
+    suspend fun followUser(username: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Please log in to follow"))
+        executeRequest(
+            "/users/follow/${username.trim()}",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .post("{}".toRequestBody(JSON_MEDIA))
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    Result.success(resJson.optBoolean("isFollowing", true))
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to follow")))
+                }
+            },
+        )
+    }
+
+    suspend fun unfollowUser(username: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Please log in to unfollow"))
+        executeRequest(
+            "/users/unfollow/${username.trim()}",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .post("{}".toRequestBody(JSON_MEDIA))
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    Result.success(resJson.optBoolean("isFollowing", false))
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to unfollow")))
+                }
+            },
+        )
+    }
+
+    suspend fun updateProfile(bio: String? = null, avatar: String? = null): Result<Boolean> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Please log in to update profile"))
+        val json = JSONObject().apply {
+            if (bio != null) put("bio", bio)
+            if (avatar != null) put("avatar", avatar)
+        }
+        executeRequest(
+            "/users/profile",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .put(json.toString().toRequestBody(JSON_MEDIA))
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    Result.success(true)
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to update profile")))
+                }
+            },
+        )
+    }
+
     suspend fun getUserProfile(username: String): Result<TuneslyPublicProfile> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
         executeRequest(
             "/users/profile/${username.trim()}",
-            builder = { url -> Request.Builder().url(url).get().build() },
+            builder = { url ->
+                val b = Request.Builder().url(url).get()
+                if (token.isNotBlank()) b.addHeader("Authorization", "Bearer $token")
+                b.build()
+            },
             parser = { resp, resJson ->
                 if (resp.isSuccessful && resJson.optBoolean("success")) {
                     val p = resJson.getJSONObject("profile")
@@ -467,6 +547,7 @@ object TuneslyCloudManager {
                             name = obj.optString("name"),
                             description = obj.optString("description"),
                             trackCount = obj.optInt("trackCount", 0),
+                            artworkUrl = obj.optString("artworkUrl"),
                         )
                     }
 
@@ -478,6 +559,10 @@ object TuneslyCloudManager {
                             bio = p.optString("bio"),
                             totalPlayTimeSeconds = p.optLong("totalPlayTimeSeconds", 0),
                             memberSince = p.optString("memberSince"),
+                            followersCount = p.optInt("followersCount", 0),
+                            followingCount = p.optInt("followingCount", 0),
+                            isFollowing = p.optBoolean("isFollowing", false),
+                            isMe = p.optBoolean("isMe", false),
                             topArtists = artists,
                             recentTracks = recent,
                             playlists = playlists,

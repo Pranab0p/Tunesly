@@ -2828,6 +2828,7 @@ private fun BitChordApp(
                         } else if (pageRoute is AppRoute.UserProfile) {
                             com.music.bitchord.ui.screens.social.UserProfileScreen(
                                 username = pageRoute.username,
+                                onBack = { navigator.pop() },
                                 onMessageClick = { navigator.push(AppRoute.Chat(it)) },
                                 onJamClick = { navigator.push(AppRoute.ListenTogether) },
                                 onPlayTrack = { song -> play(listOf(song), 0) },
@@ -2854,6 +2855,7 @@ private fun BitChordApp(
                                 onSources = { navigator.push(AppRoute.Sources) },
                                 onListenTogether = { navigator.push(AppRoute.ListenTogether) },
                                 onMessages = { navigator.push(AppRoute.Conversations) },
+                                onOpenProfile = { navigator.push(AppRoute.UserProfile(it)) },
                                 onWearOs = { navigator.push(AppRoute.WearOs) },
                                 onSpotifyCanvasAuth = { showSpotifyCanvasAuth = true },
                                 onAppLanguage = { showAppLanguage = true },

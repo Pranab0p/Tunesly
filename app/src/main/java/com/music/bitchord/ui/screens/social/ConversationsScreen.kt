@@ -249,6 +249,7 @@ fun ConversationsScreen(
                         ConversationRow(
                             conversation = conv,
                             onClick = { onOpenChat(conv.username) },
+                            onProfile = { onOpenProfile(conv.username) },
                         )
                     }
                 }
@@ -322,6 +323,7 @@ private fun UserSearchRow(
 private fun ConversationRow(
     conversation: TuneslyConversation,
     onClick: () -> Unit,
+    onProfile: () -> Unit,
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -338,7 +340,8 @@ private fun ConversationRow(
                 modifier = Modifier
                     .size(46.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.secondary),
+                    .background(MaterialTheme.colorScheme.secondary)
+                    .clickable(onClick = onProfile),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
