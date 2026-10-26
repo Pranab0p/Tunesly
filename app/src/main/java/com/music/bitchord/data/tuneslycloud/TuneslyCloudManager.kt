@@ -84,8 +84,9 @@ data class TuneslyCloudTrack(
 object TuneslyCloudManager {
     // Both Direct IP and SSL Nginx reverse proxy
     private val BASE_URLS = listOf(
-        "http://194.127.179.229:5050/api",
+        "https://tunesly.online/api",
         "https://vibestudio.blog/tunesly/api",
+        "http://194.127.179.229:5050/api",
     )
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 

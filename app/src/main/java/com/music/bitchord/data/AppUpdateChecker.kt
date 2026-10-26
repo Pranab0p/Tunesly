@@ -43,8 +43,9 @@ object AppUpdateChecker {
     private const val CACHE_SUBDIR = "updates"
 
     private val UPDATE_ENDPOINTS = listOf(
-        "http://194.127.179.229:5050/api/app/version",
+        "https://tunesly.online/api/app/version",
         "https://vibestudio.blog/tunesly/api/app/version",
+        "http://194.127.179.229:5050/api/app/version",
     )
 
     private const val GITHUB_RELEASE_URL =
