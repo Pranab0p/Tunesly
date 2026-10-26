@@ -368,6 +368,8 @@ object AppSettings {
      * had no onboarding, so they get it once too — they have no party name yet.
      */
     val onboardingComplete = MutableStateFlow(false)
+    val preferredMusicLanguages = MutableStateFlow<Set<String>>(emptySet())
+    val followedArtists = MutableStateFlow<Set<String>>(emptySet())
 
     /** Requests a sustained high-refresh UI. Off keeps Android's automatic policy. */
     val highPerformanceMode = MutableStateFlow(false)
@@ -875,6 +877,8 @@ object AppSettings {
         showNerdStats.value = prefs.getBoolean(KEY_NERD_STATS, false)
         reduceAnimation.value = prefs.getBoolean(KEY_REDUCE_ANIMATION, false)
         onboardingComplete.value = prefs.getBoolean(KEY_ONBOARDING_COMPLETE, false)
+        preferredMusicLanguages.value = prefs.getStringSet(KEY_PREFERRED_MUSIC_LANGUAGES, emptySet()) ?: emptySet()
+        followedArtists.value = prefs.getStringSet(KEY_FOLLOWED_ARTISTS, emptySet()) ?: emptySet()
         highPerformanceMode.value = prefs.getBoolean(KEY_HIGH_PERFORMANCE_MODE, false)
         performanceRefreshRate.value = normalizePerformanceRefreshRate(
             prefs.getInt(KEY_PERFORMANCE_REFRESH_RATE, DEFAULT_PERFORMANCE_REFRESH_RATE),
@@ -1287,6 +1291,20 @@ object AppSettings {
     fun setStopOnTaskRemoved(value: Boolean) {
         stopOnTaskRemoved.value = value
         prefs.edit().putBoolean(KEY_STOP_ON_TASK_REMOVED, value).apply()
+    }
+
+    fun setPreferredMusicLanguages(languages: Set<String>) {
+        preferredMusicLanguages.value = languages
+        if (this::prefs.isInitialized) {
+            prefs.edit().putStringSet(KEY_PREFERRED_MUSIC_LANGUAGES, languages).apply()
+        }
+    }
+
+    fun setFollowedArtists(artists: Set<String>) {
+        followedArtists.value = artists
+        if (this::prefs.isInitialized) {
+            prefs.edit().putStringSet(KEY_FOLLOWED_ARTISTS, artists).apply()
+        }
     }
 
     fun setHideVolumeBar(value: Boolean) {
@@ -2198,6 +2216,8 @@ object AppSettings {
     private const val KEY_DISCORD_BUTTON_2_TEXT = "discord_button_2_text"
     private const val KEY_DISCORD_BUTTON_2_VISIBLE = "discord_button_2_visible"
     private const val KEY_DISCORD_INFO_DISMISSED = "discord_info_dismissed"
+    private const val KEY_PREFERRED_MUSIC_LANGUAGES = "preferred_music_languages"
+    private const val KEY_FOLLOWED_ARTISTS = "followed_artists"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
 

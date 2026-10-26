@@ -114,6 +114,19 @@ object UserTasteProfile {
 
     fun getLastPlayedSeed(): TasteTrack? = inMemoryLastPlayed
 
+    fun setFollowedArtists(artists: Collection<String>) {
+        artists.forEach { artist ->
+            val clean = artist.trim()
+            if (clean.isNotBlank()) {
+                val current = inMemoryArtistCounts[clean] ?: 0
+                if (current < 5) {
+                    inMemoryArtistCounts[clean] = 5
+                }
+            }
+        }
+        persistToDisk()
+    }
+
     fun getTopArtists(limit: Int = 5): List<String> =
         inMemoryArtistCounts.entries
             .sortedByDescending { it.value }
