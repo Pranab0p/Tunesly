@@ -25,6 +25,10 @@ sealed interface AppRoute {
     data object Discord : AppRoute
     data object Spotify : AppRoute
 
+    data object Conversations : AppRoute
+    data class Chat(val username: String) : AppRoute
+    data class UserProfile(val username: String) : AppRoute
+
     /** A Library shelf's "Show all" — its own cards laid out again as a grid. */
     data class LibraryShowAll(val shelf: HomeShelf) : AppRoute
 }

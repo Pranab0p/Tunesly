@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.ScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Message
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.Animation
@@ -188,6 +189,7 @@ fun SettingsScreen(
     onTranslationLanguage: () -> Unit,
     onSources: () -> Unit,
     onListenTogether: () -> Unit,
+    onMessages: () -> Unit = {},
     onWearOs: () -> Unit,
     onSpotifyCanvasAuth: () -> Unit,
     onAppLanguage: () -> Unit,
@@ -430,6 +432,16 @@ fun SettingsScreen(
                             showTuneslyAuthDialogInSettings = true
                         }
                     },
+                )
+            }
+            RowDivider()
+            row("Messages & Friends", "messages", "chat", "direct", "dm", "profile") {
+                SettingsRow(
+                    icon = Icons.AutoMirrored.Rounded.Message,
+                    title = "Messages & DMs",
+                    subtitle = "Chat with friends & share music",
+                    trailing = { Chevron() },
+                    onClick = onMessages,
                 )
             }
             RowDivider()

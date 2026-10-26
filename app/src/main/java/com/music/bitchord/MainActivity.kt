@@ -63,6 +63,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Message
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -2808,6 +2809,30 @@ private fun BitChordApp(
                             )
                         } else if (pageRoute == AppRoute.Equalizer) {
                             EqualizerScreen(contentPadding = listPadding)
+                        } else if (pageRoute == AppRoute.Conversations) {
+                            com.music.bitchord.ui.screens.social.ConversationsScreen(
+                                onOpenChat = { navigator.push(AppRoute.Chat(it)) },
+                                onOpenProfile = { navigator.push(AppRoute.UserProfile(it)) },
+                                onOpenLogin = { navigator.push(AppRoute.Settings) },
+                                contentPadding = listPadding,
+                            )
+                        } else if (pageRoute is AppRoute.Chat) {
+                            val currentSong = player.song
+                            com.music.bitchord.ui.screens.social.ChatScreen(
+                                recipientUsername = pageRoute.username,
+                                currentPlayingSong = currentSong,
+                                onOpenProfile = { navigator.push(AppRoute.UserProfile(it)) },
+                                onPlayTrack = { song -> play(listOf(song), 0) },
+                                contentPadding = listPadding,
+                            )
+                        } else if (pageRoute is AppRoute.UserProfile) {
+                            com.music.bitchord.ui.screens.social.UserProfileScreen(
+                                username = pageRoute.username,
+                                onMessageClick = { navigator.push(AppRoute.Chat(it)) },
+                                onJamClick = { navigator.push(AppRoute.ListenTogether) },
+                                onPlayTrack = { song -> play(listOf(song), 0) },
+                                contentPadding = listPadding,
+                            )
                         } else if (pageRoute == AppRoute.Settings) {
                             SettingsScreen(
                                 windowWidth = windowWidth,
@@ -2828,6 +2853,7 @@ private fun BitChordApp(
                                 onTranslationLanguage = { showTranslationLanguage = true },
                                 onSources = { navigator.push(AppRoute.Sources) },
                                 onListenTogether = { navigator.push(AppRoute.ListenTogether) },
+                                onMessages = { navigator.push(AppRoute.Conversations) },
                                 onWearOs = { navigator.push(AppRoute.WearOs) },
                                 onSpotifyCanvasAuth = { showSpotifyCanvasAuth = true },
                                 onAppLanguage = { showAppLanguage = true },
@@ -3420,6 +3446,9 @@ private fun BitChordApp(
                         AppRoute.ListenTogether -> stringResource(R.string.listen_together)
                         AppRoute.WearOs -> stringResource(R.string.wear_os_page_title)
                         AppRoute.Equalizer -> stringResource(R.string.equalizer)
+                        AppRoute.Conversations -> "Messages"
+                        is AppRoute.Chat -> "@${route.username}"
+                        is AppRoute.UserProfile -> "@${route.username}" 
                         AppRoute.Settings -> stringResource(R.string.settings)
                         AppRoute.Replay -> stringResource(R.string.replay)
                         null -> when {
@@ -3573,6 +3602,17 @@ private fun BitChordApp(
                         // None on Settings or the pages opened from it: those are
                         // about the account, and the photo would only reopen them.
                         if (!(route != null && AppRoute.Settings in navigator)) {
+                            if (route == null && detail == null) {
+                                IconButton(
+                                    onClick = { navigator.push(AppRoute.Conversations) },
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Rounded.Message,
+                                        contentDescription = "Messages",
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
                             // Left of the account photo, and only on Library itself:
                             // a history is a record of what was played, which reads
                             // as that tab's business rather than every tab's.
