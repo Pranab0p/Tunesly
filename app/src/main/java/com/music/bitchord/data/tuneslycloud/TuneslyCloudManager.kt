@@ -116,12 +116,21 @@ object TuneslyCloudManager {
         return Result.failure(lastException ?: Exception("Network error connecting to Tunesly VPS"))
     }
 
-    suspend fun register(username: String, email: String, password: String): Result<TuneslyUser> =
+    suspend fun register(
+        username: String,
+        email: String,
+        password: String,
+        displayName: String = "",
+    ): Result<TuneslyUser> =
         withContext(Dispatchers.IO) {
             val json = JSONObject().apply {
                 put("username", username.trim())
                 put("email", email.trim())
                 put("password", password)
+                if (displayName.isNotBlank()) {
+                    put("displayName", displayName.trim())
+                    put("name", displayName.trim())
+                }
             }
             executeRequest(
                 "/auth/register",
@@ -141,6 +150,24 @@ object TuneslyCloudManager {
                             email = userObj.optString("email"),
                         )
                         AppSettings.setTuneslyAccount(token, user.username, user.email)
+                        if (displayName.isNotBlank()) {
+                            try {
+                                val updateJson = JSONObject().apply {
+                                    put("displayName", displayName.trim())
+                                }
+                                executeRequest(
+                                    "/users/profile/update",
+                                    builder = { uUrl ->
+                                        Request.Builder()
+                                            .url(uUrl)
+                                            .addHeader("Authorization", "Bearer $token")
+                                            .post(updateJson.toString().toRequestBody(JSON_MEDIA))
+                                            .build()
+                                    },
+                                    parser = { _, _ -> Result.success(true) },
+                                )
+                            } catch (_: Exception) {}
+                        }
                         Result.success(user)
                     } else {
                         val err = resJson.optString("error", "Registration failed (${resp.code})")

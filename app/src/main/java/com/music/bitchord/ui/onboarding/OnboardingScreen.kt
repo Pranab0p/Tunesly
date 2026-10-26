@@ -1,18 +1,9 @@
 package com.music.bitchord.ui.onboarding
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,34 +13,43 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AlternateEmail
+import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,310 +59,627 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.music.bitchord.R
+import com.music.bitchord.data.tuneslycloud.TuneslyCloudManager
 import com.music.bitchord.sharedui.resources.Res
 import com.music.bitchord.sharedui.resources.ic_google_g
 import com.music.bitchord.sharedui.resources.ic_logo
-import org.jetbrains.compose.resources.painterResource
-import com.music.bitchord.ui.icons.BitChordIcons
-import com.music.bitchord.ui.player.MeshGradientBackground
 import com.music.bitchord.ui.player.MESH_CYCLE_MILLIS
-import com.music.bitchord.ui.player.MeshPalette
+import com.music.bitchord.ui.player.MeshGradientBackground
 import com.music.bitchord.ui.player.WelcomeMeshPalettes
 import com.music.bitchord.ui.player.cyclingMeshPalette
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.painterResource
+
+private enum class AuthMode {
+    LOGIN,
+    SIGNUP,
+}
 
 /**
- * The two welcome pages: a name for Listen Together, then the YouTube sign-in.
+ * First-launch welcome & authentication screen for Tunesly.
  *
- * Shown once — to new installs and, because the flag it sets is new, to anyone
- * updating from a build without it. The second page is skipped for an account
- * that is already signed in; asking somebody to connect what is connected
- * reads as the app having forgotten them.
- *
- * Always drawn dark, whatever the theme, for the same reason Replay is: the
- * mesh is colour, and white type is what sits on colour.
+ * Provides Log In and Sign Up tabs with fields for Name, Username, Email,
+ * and Password, plus a Guest entry option.
  */
 @Composable
 fun OnboardingScreen(
     signedIn: Boolean,
     initialName: String,
-    /** Saves the party name. Called on Next, before the second page. */
+    /** Saves the user's display / nickname */
     onNameChosen: (String) -> Unit,
-    /** Opens the Google sign-in. The caller finishes onboarding once it lands. */
+    /** Opens Google / YouTube sign-in */
     onSignIn: () -> Unit,
+    /** Finishes onboarding and transitions to main app */
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var page by rememberSaveable { mutableIntStateOf(PAGE_NAME) }
-    var name by rememberSaveable { mutableStateOf(initialName) }
+    var authMode by rememberSaveable { mutableStateOf(AuthMode.LOGIN) }
     val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
 
-    BackHandler(enabled = page == PAGE_CONNECT) { page = PAGE_NAME }
-    // "Sign in with Google" goes through the app's own sign-in WebView, raised
-    // over this page; the account landing is what ends the welcome.
-    LaunchedEffect(signedIn, page) {
-        if (signedIn && page == PAGE_CONNECT) onFinish()
+    // Sign Up Fields
+    var fullName by rememberSaveable { mutableStateOf(initialName) }
+    var signupUsername by rememberSaveable { mutableStateOf("") }
+    var signupEmail by rememberSaveable { mutableStateOf("") }
+    var signupPassword by rememberSaveable { mutableStateOf("") }
+    var signupPasswordVisible by rememberSaveable { mutableStateOf(false) }
+
+    // Log In Fields
+    var loginIdentifier by rememberSaveable { mutableStateOf("") }
+    var loginPassword by rememberSaveable { mutableStateOf("") }
+    var loginPasswordVisible by rememberSaveable { mutableStateOf(false) }
+
+    // Status
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Auto-dismiss if Google sign-in completes
+    LaunchedEffect(signedIn) {
+        if (signedIn) onFinish()
     }
 
-    // The mesh never settles on one palette: each crossfade is as long as the
-    // hold, so one runs straight into the next.
-    val palette = cyclingMeshPalette(if (page == PAGE_NAME) WelcomeMeshPalettes else ConnectPalettes)
+    // Dynamic mesh animation
+    val palette = cyclingMeshPalette(WelcomeMeshPalettes)
 
     Box(
-        modifier
+        modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            // Swallows every touch the pages don't, so nothing reaches the app
-            // laid out underneath — and a tap on the backdrop puts the keyboard
-            // away, which is where a thumb goes to dismiss one.
             .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } },
     ) {
         MeshGradientBackground(
             palette = palette,
-            trackKey = page,
+            trackKey = authMode.ordinal,
             continuous = true,
             driftMillis = 6_000,
             colorFadeMillis = MESH_CYCLE_MILLIS,
         )
-        // The mesh carries its own light scrim for a player's controls; two
-        // full-width buttons and a paragraph want the foot of it a shade deeper.
+
+        // Gradient overlay for smooth readability
         Box(
             Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.05f),
-                        0.55f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.45f),
+                        0f to Color.Black.copy(alpha = 0.25f),
+                        0.45f to Color.Black.copy(alpha = 0.55f),
+                        1f to Color.Black.copy(alpha = 0.88f),
                     ),
                 ),
         )
 
-        AnimatedContent(
-            targetState = page,
-            transitionSpec = {
-                val forward = targetState > initialState
-                val slide = tween<IntOffset>(420)
-                (slideInHorizontally(slide) { if (forward) it / 3 else -it / 3 } + fadeIn(tween(320, 100)))
-                    .togetherWith(
-                        slideOutHorizontally(slide) { if (forward) -it / 3 else it / 3 } + fadeOut(tween(200)),
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 480.dp)
+                    .systemBarsPadding()
+                    .imePadding()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Spacer(Modifier.height(20.dp))
+
+                // Brand Header with Icon & Name
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                ) {
+                    Image(
+                        painter = painterResource(Res.drawable.ic_logo),
+                        contentDescription = "Tunesly Logo",
+                        modifier = Modifier.size(36.dp),
                     )
-            },
-            label = "onboardingPage",
-            modifier = Modifier
-                .fillMaxSize()
-                .systemBarsPadding()
-                .imePadding(),
-        ) { shown ->
-            OnboardingPage {
-                when (shown) {
-                    PAGE_NAME -> NamePage(
-                        name = name,
-                        onNameChange = { name = it.take(NAME_LIMIT) },
-                        onNext = next@{
-                            val chosen = name.trim()
-                            if (chosen.isEmpty()) return@next
-                            focusManager.clearFocus()
-                            onNameChosen(chosen)
-                            if (signedIn) onFinish() else page = PAGE_CONNECT
-                        },
-                    )
-                    else -> ConnectPage(
-                        onBack = { page = PAGE_NAME },
-                        onSignIn = onSignIn,
-                        onSkip = onFinish,
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "TUNESLY",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.5.sp,
+                        color = Color.White,
                     )
                 }
+
+                // Title & Subtitle
+                Text(
+                    text = if (authMode == AuthMode.LOGIN) "Welcome Back" else "Create Account",
+                    style = MaterialTheme.typography.displaySmall.copy(
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.8).sp,
+                        color = Color.White,
+                    ),
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = if (authMode == AuthMode.LOGIN) {
+                        stringResource(R.string.onboarding_auth_welcome_subtitle)
+                    } else {
+                        "Sign up to sync music across devices, chat with friends & personalize your feed"
+                    },
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 13.5.sp,
+                        lineHeight = 19.sp,
+                        color = Color.White.copy(alpha = 0.72f),
+                    ),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+
+                Spacer(Modifier.height(22.dp))
+
+                // Segmented Switcher (Log In | Sign Up)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.14f))
+                        .padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(CircleShape)
+                            .background(if (authMode == AuthMode.LOGIN) Color.White else Color.Transparent)
+                            .clickable {
+                                authMode = AuthMode.LOGIN
+                                errorMessage = null
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.auth_tab_login),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (authMode == AuthMode.LOGIN) Color.Black else Color.White.copy(alpha = 0.75f),
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(CircleShape)
+                            .background(if (authMode == AuthMode.SIGNUP) Color.White else Color.Transparent)
+                            .clickable {
+                                authMode = AuthMode.SIGNUP
+                                errorMessage = null
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.auth_tab_signup),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (authMode == AuthMode.SIGNUP) Color.Black else Color.White.copy(alpha = 0.75f),
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(18.dp))
+
+                // Error Banner
+                AnimatedVisibility(visible = errorMessage != null) {
+                    errorMessage?.let { msg ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFFE53935).copy(alpha = 0.28f))
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                text = msg,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFF8A80),
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
+                    }
+                }
+
+                // Dynamic Form Content
+                if (authMode == AuthMode.LOGIN) {
+                    // Log In Form
+                    AuthInputField(
+                        value = loginIdentifier,
+                        onValueChange = {
+                            loginIdentifier = it
+                            errorMessage = null
+                        },
+                        placeholder = "Username or Email",
+                        leadingIcon = Icons.Rounded.Person,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Next,
+                        ),
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    AuthInputField(
+                        value = loginPassword,
+                        onValueChange = {
+                            loginPassword = it
+                            errorMessage = null
+                        },
+                        placeholder = stringResource(R.string.auth_field_password),
+                        leadingIcon = Icons.Rounded.Lock,
+                        isPassword = true,
+                        passwordVisible = loginPasswordVisible,
+                        onTogglePassword = { loginPasswordVisible = !loginPasswordVisible },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    PillButton(
+                        label = stringResource(R.string.auth_btn_login),
+                        onClick = {
+                            focusManager.clearFocus()
+                            val cleanLogin = loginIdentifier.trim()
+                            val cleanPass = loginPassword
+                            if (cleanLogin.isBlank() || cleanPass.isBlank()) {
+                                errorMessage = "Please enter both username/email and password"
+                                return@PillButton
+                            }
+                            isLoading = true
+                            errorMessage = null
+                            coroutineScope.launch {
+                                val result = TuneslyCloudManager.login(cleanLogin, cleanPass)
+                                isLoading = false
+                                result.fold(
+                                    onSuccess = { user ->
+                                        onNameChosen(user.username)
+                                        onFinish()
+                                    },
+                                    onFailure = { err ->
+                                        errorMessage = err.message ?: "Login failed. Check your credentials."
+                                    },
+                                )
+                            }
+                        },
+                        primary = true,
+                        enabled = !isLoading && loginIdentifier.isNotBlank() && loginPassword.isNotBlank(),
+                        loading = isLoading,
+                    )
+
+                    Spacer(Modifier.height(14.dp))
+
+                    Text(
+                        text = stringResource(R.string.auth_switch_to_signup),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable {
+                                authMode = AuthMode.SIGNUP
+                                errorMessage = null
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                } else {
+                    // Sign Up Form (Name, Username, Email, Password)
+                    AuthInputField(
+                        value = fullName,
+                        onValueChange = {
+                            fullName = it
+                            errorMessage = null
+                        },
+                        placeholder = stringResource(R.string.auth_field_fullname) + " (e.g. Aarav Sharma)",
+                        leadingIcon = Icons.Rounded.Person,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                            imeAction = ImeAction.Next,
+                        ),
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    AuthInputField(
+                        value = signupUsername,
+                        onValueChange = {
+                            signupUsername = it.filterNot { c -> c.isWhitespace() }.lowercase()
+                            errorMessage = null
+                        },
+                        placeholder = stringResource(R.string.auth_field_username) + " (e.g. aarav)",
+                        leadingIcon = Icons.Rounded.AlternateEmail,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Ascii,
+                            imeAction = ImeAction.Next,
+                        ),
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    AuthInputField(
+                        value = signupEmail,
+                        onValueChange = {
+                            signupEmail = it.trim()
+                            errorMessage = null
+                        },
+                        placeholder = stringResource(R.string.auth_field_email) + " (e.g. aarav@gmail.com)",
+                        leadingIcon = Icons.Rounded.Email,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Next,
+                        ),
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    AuthInputField(
+                        value = signupPassword,
+                        onValueChange = {
+                            signupPassword = it
+                            errorMessage = null
+                        },
+                        placeholder = stringResource(R.string.auth_field_password) + " (min 6 characters)",
+                        leadingIcon = Icons.Rounded.Lock,
+                        isPassword = true,
+                        passwordVisible = signupPasswordVisible,
+                        onTogglePassword = { signupPasswordVisible = !signupPasswordVisible },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    PillButton(
+                        label = stringResource(R.string.auth_btn_signup),
+                        onClick = {
+                            focusManager.clearFocus()
+                            val cleanName = fullName.trim()
+                            val cleanUser = signupUsername.trim()
+                            val cleanEmail = signupEmail.trim()
+                            val cleanPass = signupPassword
+
+                            if (cleanUser.length < 3) {
+                                errorMessage = "Username must be at least 3 characters"
+                                return@PillButton
+                            }
+                            if (!cleanEmail.contains("@") || !cleanEmail.contains(".")) {
+                                errorMessage = "Please enter a valid email address"
+                                return@PillButton
+                            }
+                            if (cleanPass.length < 6) {
+                                errorMessage = "Password must be at least 6 characters"
+                                return@PillButton
+                            }
+
+                            isLoading = true
+                            errorMessage = null
+                            coroutineScope.launch {
+                                val result = TuneslyCloudManager.register(
+                                    username = cleanUser,
+                                    email = cleanEmail,
+                                    password = cleanPass,
+                                    displayName = cleanName.ifBlank { cleanUser },
+                                )
+                                isLoading = false
+                                result.fold(
+                                    onSuccess = { user ->
+                                        onNameChosen(cleanName.ifBlank { user.username })
+                                        onFinish()
+                                    },
+                                    onFailure = { err ->
+                                        errorMessage = err.message ?: "Registration failed. Try a different username."
+                                    },
+                                )
+                            }
+                        },
+                        primary = true,
+                        enabled = !isLoading && signupUsername.isNotBlank() && signupEmail.isNotBlank() && signupPassword.isNotBlank(),
+                        loading = isLoading,
+                    )
+
+                    Spacer(Modifier.height(14.dp))
+
+                    Text(
+                        text = stringResource(R.string.auth_switch_to_login),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable {
+                                authMode = AuthMode.LOGIN
+                                errorMessage = null
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // OR Divider
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(1.dp)
+                            .background(Color.White.copy(alpha = 0.16f)),
+                    )
+                    Text(
+                        text = "OR",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.45f),
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(1.dp)
+                            .background(Color.White.copy(alpha = 0.16f)),
+                    )
+                }
+
+                Spacer(Modifier.height(18.dp))
+
+                // Guest / Skip Option
+                PillButton(
+                    label = stringResource(R.string.auth_continue_guest),
+                    onClick = {
+                        focusManager.clearFocus()
+                        onNameChosen(initialName.ifBlank { "Guest" })
+                        onFinish()
+                    },
+                    primary = false,
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                // Optional Google Sign-In
+                PillButton(
+                    label = stringResource(R.string.onboarding_sign_in_google),
+                    onClick = {
+                        focusManager.clearFocus()
+                        onSignIn()
+                    },
+                    primary = false,
+                    leading = {
+                        Image(
+                            painter = painterResource(Res.drawable.ic_google_g),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                )
+
+                Spacer(Modifier.height(32.dp))
             }
         }
     }
 }
 
-/** The column every page is laid out in, capped so a tablet doesn't stretch it. */
-@Composable
-private fun OnboardingPage(content: @Composable ColumnScope.() -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .widthIn(max = 520.dp)
-                .padding(horizontal = 28.dp),
-            content = content,
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ColumnScope.NamePage(
-    name: String,
-    onNameChange: (String) -> Unit,
-    onNext: () -> Unit,
-) {
-    // With the keyboard up there is room for the title or the logo, not both;
-    // the title is the one that says where you are.
-    val keyboardUp = WindowInsets.isImeVisible
-    AnimatedVisibility(
-        visible = !keyboardUp,
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically(),
-    ) {
-        Column {
-            Spacer(Modifier.height(56.dp))
-            Image(
-                painter = painterResource(Res.drawable.ic_logo),
-                contentDescription = null,
-                modifier = Modifier.size(width = 46.dp, height = 30.dp),
-            )
-        }
-    }
-    Spacer(Modifier.height(24.dp))
-    Title(stringResource(R.string.onboarding_title))
-
-    Spacer(Modifier.weight(1f))
-
-    Text(
-        text = stringResource(R.string.onboarding_name_prompt),
-        style = MaterialTheme.typography.titleMedium,
-        fontSize = 17.sp,
-        color = Color.White.copy(alpha = 0.78f),
-        modifier = Modifier.padding(start = 4.dp),
-    )
-    Spacer(Modifier.height(12.dp))
-    NameField(value = name, onValueChange = onNameChange, onDone = onNext)
-    Spacer(Modifier.height(10.dp))
-    Text(
-        text = stringResource(R.string.onboarding_name_footer),
-        style = MaterialTheme.typography.bodyMedium,
-        color = Color.White.copy(alpha = 0.55f),
-        modifier = Modifier.padding(horizontal = 4.dp),
-    )
-    Spacer(Modifier.height(28.dp))
-    PillButton(
-        label = stringResource(R.string.onboarding_next),
-        onClick = onNext,
-        enabled = name.isNotBlank(),
-        primary = true,
-    )
-    Spacer(Modifier.height(16.dp))
-}
-
-@Composable
-private fun ColumnScope.ConnectPage(
-    onBack: () -> Unit,
-    onSignIn: () -> Unit,
-    onSkip: () -> Unit,
-) {
-    Spacer(Modifier.height(16.dp))
-    BackButton(onBack)
-    Spacer(Modifier.height(20.dp))
-    Title(stringResource(R.string.onboarding_connect_title))
-    Spacer(Modifier.height(14.dp))
-    Text(
-        text = stringResource(R.string.onboarding_connect_body),
-        style = MaterialTheme.typography.bodyLarge,
-        fontSize = 17.sp,
-        lineHeight = 23.sp,
-        color = Color.White.copy(alpha = 0.72f),
-    )
-
-    Spacer(Modifier.weight(1f))
-
-    PillButton(
-        label = stringResource(R.string.onboarding_sign_in_google),
-        onClick = onSignIn,
-        primary = true,
-        leading = {
-            Image(
-                painter = painterResource(Res.drawable.ic_google_g),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-            )
-        },
-    )
-    Spacer(Modifier.height(12.dp))
-    PillButton(
-        label = stringResource(R.string.onboarding_skip_sign_in),
-        onClick = onSkip,
-        primary = false,
-    )
-    Spacer(Modifier.height(16.dp))
-}
-
-/** Replay's heading, scaled up: the one line each page exists to say. */
-@Composable
-private fun Title(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.displayLarge.copy(
-            fontSize = 40.sp,
-            lineHeight = 44.sp,
-            letterSpacing = (-1.2).sp,
-        ),
-        color = Color.White,
-    )
-}
-
 /**
- * The name, set in the heading's own face and weight so what you type reads
- * as part of the page rather than a form on top of it.
+ * Sleek frosted input field with leading icon and optional password toggle.
  */
 @Composable
-private fun NameField(value: String, onValueChange: (String) -> Unit, onDone: () -> Unit) {
-    val style = MaterialTheme.typography.displayLarge.copy(
-        fontSize = 26.sp,
-        lineHeight = 30.sp,
-        letterSpacing = (-0.6).sp,
+private fun AuthInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    leadingIcon: ImageVector,
+    modifier: Modifier = Modifier,
+    isPassword: Boolean = false,
+    passwordVisible: Boolean = false,
+    onTogglePassword: (() -> Unit)? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+) {
+    val style = MaterialTheme.typography.bodyLarge.copy(
+        fontSize = 16.sp,
         color = Color.White,
+        fontWeight = FontWeight.Medium,
     )
-    Box(
-        Modifier
+
+    Row(
+        modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.14f))
-            .padding(horizontal = 24.dp),
-        contentAlignment = Alignment.CenterStart,
+            .height(54.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.13f))
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (value.isEmpty()) {
-            Text(
-                text = stringResource(R.string.onboarding_name_hint),
-                style = style,
-                color = Color.White.copy(alpha = 0.38f),
-                maxLines = 1,
+        Icon(
+            imageVector = leadingIcon,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.65f),
+            modifier = Modifier.size(20.dp),
+        )
+
+        Spacer(Modifier.width(12.dp))
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (value.isEmpty()) {
+                Text(
+                    text = placeholder,
+                    style = style,
+                    color = Color.White.copy(alpha = 0.38f),
+                    maxLines = 1,
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = style,
+                cursorBrush = SolidColor(Color.White),
+                visualTransformation = if (isPassword && !passwordVisible) {
+                    PasswordVisualTransformation()
+                } else {
+                    VisualTransformation.None
+                },
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            textStyle = style,
-            cursorBrush = SolidColor(Color.White),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Words,
-                autoCorrectEnabled = false,
-                imeAction = ImeAction.Next,
-            ),
-            keyboardActions = KeyboardActions(onNext = { onDone() }),
-            modifier = Modifier.fillMaxWidth(),
-        )
+
+        if (isPassword && onTogglePassword != null) {
+            IconButton(
+                onClick = onTogglePassword,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                    contentDescription = "Toggle password visibility",
+                    tint = Color.White.copy(alpha = 0.65f),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
     }
 }
 
 /**
- * A full-width capsule. Primary is white on the mesh, the way Apple Music's
- * own welcome sheet does it; secondary is the same shape in frosted white, so
- * the pair reads as a choice rather than a button and an afterthought.
+ * Capsule pill action button.
  */
 @Composable
 private fun PillButton(
@@ -370,16 +687,26 @@ private fun PillButton(
     onClick: () -> Unit,
     primary: Boolean,
     enabled: Boolean = true,
+    loading: Boolean = false,
     leading: (@Composable () -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, spring(stiffness = 900f), label = "pillScale")
-    val alpha by animateFloatAsState(if (enabled) 1f else 0.4f, tween(180), label = "pillAlpha")
+    val scale by animateFloatAsState(
+        if (pressed && enabled && !loading) 0.97f else 1f,
+        spring(stiffness = 900f),
+        label = "pillScale",
+    )
+    val alpha by animateFloatAsState(
+        if (enabled && !loading) 1f else 0.5f,
+        tween(180),
+        label = "pillAlpha",
+    )
+
     Row(
-        Modifier
+        modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(54.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -390,59 +717,32 @@ private fun PillButton(
             .clickable(
                 interactionSource = interaction,
                 indication = null,
-                enabled = enabled,
+                enabled = enabled && !loading,
                 onClick = onClick,
             ),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (leading != null) {
-            leading()
-            Spacer(Modifier.width(10.dp))
+        if (loading) {
+            CircularProgressIndicator(
+                color = if (primary) Color.Black else Color.White,
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.5.dp,
+            )
+        } else {
+            if (leading != null) {
+                leading()
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (primary) Color.Black else Color.White,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
         }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleMedium,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.W700,
-            color = if (primary) Color.Black else Color.White,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-        )
     }
 }
-
-@Composable
-private fun BackButton(onClick: () -> Unit) {
-    Box(
-        Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.16f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = BitChordIcons.ChevronRight,
-            contentDescription = stringResource(R.string.onboarding_back),
-            tint = Color.White,
-            modifier = Modifier
-                .size(18.dp)
-                .graphicsLayer { scaleX = -1f },
-        )
-    }
-}
-
-private const val PAGE_NAME = 0
-private const val PAGE_CONNECT = 1
-
-/** Long enough for a full name; the party server keeps the first 80. */
-private const val NAME_LIMIT = 40
-
-/** The account page keeps leaning into YouTube's red while it moves. */
-private val ConnectPalettes = listOf(
-    MeshPalette(listOf(Color(0xFFFF1E3C), Color(0xFFC2185B), Color(0xFFFF8F3D), Color(0xFF4A1C8C))),
-    MeshPalette(listOf(Color(0xFFE53935), Color(0xFFFF6E40), Color(0xFFAD1457), Color(0xFF311B92))),
-    MeshPalette(listOf(Color(0xFFFF3D00), Color(0xFFD81B60), Color(0xFF8E24AA), Color(0xFFB71C1C))),
-    MeshPalette(listOf(Color(0xFFF50057), Color(0xFFFF9100), Color(0xFFC51162), Color(0xFF4527A0))),
-)

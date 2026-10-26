@@ -1246,6 +1246,24 @@
     <string name="room_preset_hall">Concert Hall</string>
     <string name="room_preset_cathedral">Cathedral</string>
     <string name="room_wet_depth">Acoustic Depth (Wet Mix)</string>
+    <!-- Tunesly Auth Onboarding -->
+    <string name="onboarding_auth_welcome_title">Welcome to Tunesly</string>
+    <string name="onboarding_auth_welcome_subtitle">Log in or create an account to sync playlists, chat &amp; listen with friends</string>
+    <string name="auth_tab_login">Log In</string>
+    <string name="auth_tab_signup">Sign Up</string>
+    <string name="auth_field_fullname">Full Name</string>
+    <string name="auth_field_username">Username</string>
+    <string name="auth_field_email">Email</string>
+    <string name="auth_field_password">Password</string>
+    <string name="auth_btn_login">Log In</string>
+    <string name="auth_btn_signup">Create Account</string>
+    <string name="auth_continue_guest">Continue as Guest</string>
+    <string name="auth_switch_to_signup">Don’t have an account? Sign Up</string>
+    <string name="auth_switch_to_login">Already have an account? Log In</string>
+    <string name="auth_error_fill_all">Please fill in all fields</string>
+    <string name="auth_error_username_short">Username must be at least 3 characters</string>
+    <string name="auth_error_password_short">Password must be at least 6 characters</string>
+    <string name="auth_error_invalid_email">Please enter a valid email address</string>
 </resources>
 
 
