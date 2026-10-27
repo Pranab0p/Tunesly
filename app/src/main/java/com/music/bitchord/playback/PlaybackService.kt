@@ -3525,6 +3525,11 @@ class PlaybackService : MediaLibraryService() {
         if (prevSong != null && prevStart > 0L) {
             val listenedSec = (System.currentTimeMillis() - prevStart) / 1000L
             val durSec = (listenBrainzDurationMs ?: 0L) / 1000L
+            if (listenedSec < 20L && !ended) {
+                com.music.bitchord.data.taste.UserTasteProfile.recordSkip(prevSong.videoId, prevSong.artist)
+            } else if (listenedSec >= 45L || ended) {
+                com.music.bitchord.data.taste.UserTasteProfile.recordCompleted(prevSong)
+            }
             scope.launch {
                 com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.logPlayback(
                     trackId = prevSong.videoId,

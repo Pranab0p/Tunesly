@@ -103,33 +103,59 @@ suspend fun loadAutoplayTracks(
     limit: Int = MAX_QUEUED_AUTOPLAY,
 ): Result<List<Song>> {
     val seed = youtubeSeedFor(seedSong)
+    val sessionVibe = com.music.bitchord.data.taste.UserTasteProfile.getActiveSessionVibe()
+
     val ytRelated = if (seed != null) {
         YtMusicRepository.radio(seed).getOrElse { emptyList() }
     } else {
         emptyList()
     }
 
-    var extra = QueueBuilder.extend(existing, ytRelated, limit)
+    // Filter out anti-fatigue tracks (skips within 2h + recent 40 history tracks)
+    val filteredYt = ytRelated.filterNot { sessionVibe.antiFatigueIds.contains(it.videoId) }
 
-    // If YouTube radio returned fewer than limit tracks, top up with similar artist tracks
+    var extra = QueueBuilder.extend(existing, filteredYt, limit)
+
+    // Top up with session vibe aligned songs if space remains
     if (extra.size < limit) {
-        val needed = limit - extra.size
+        val searchSeed = if (sessionVibe.topArtists.isNotEmpty()) {
+            "${sessionVibe.topArtists.first()} ${sessionVibe.moodKeywords}"
+        } else {
+            "${seedSong.artist} ${sessionVibe.moodKeywords}"
+        }
+        val vibeFallback = YtMusicRepository.search(searchSeed, SearchFilter.SONGS)
+            .getOrNull().orEmpty()
+            .filterIsInstance<SearchResult.Track>()
+            .map { it.song }
+            .filterNot { sessionVibe.antiFatigueIds.contains(it.videoId) }
+
+        if (vibeFallback.isNotEmpty()) {
+            val combined = filteredYt + vibeFallback
+            extra = QueueBuilder.extend(existing, combined, limit)
+        }
+    }
+
+    // Artist top songs fallback if still not full
+    if (extra.size < limit) {
         val artistFallback = YtMusicRepository.search("${seedSong.artist} top songs", SearchFilter.SONGS)
             .getOrNull().orEmpty()
             .filterIsInstance<SearchResult.Track>()
             .map { it.song }
+            .filterNot { sessionVibe.antiFatigueIds.contains(it.videoId) }
 
         if (artistFallback.isNotEmpty()) {
-            val combined = ytRelated + artistFallback
+            val combined = extra + artistFallback
             extra = QueueBuilder.extend(existing, combined, limit)
         }
     }
 
     if (extra.isEmpty()) return Result.success(emptyList())
 
+    val dynamicRadioName = "${sessionVibe.moodTag} Flow"
+
     return Result.success(extra.map {
         it.copy(
-            radioName = seedSong.radioName ?: "Tunesly Infinite Radio",
+            radioName = seedSong.radioName ?: dynamicRadioName,
             playbackSource = seedSong.playbackSource,
             playbackSourceType = seedSong.playbackSourceType,
             playbackSourceId = seedSong.playbackSourceId,

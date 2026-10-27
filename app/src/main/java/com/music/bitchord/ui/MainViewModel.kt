@@ -1969,6 +1969,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (_: Exception) {}
             }
 
+            // Dynamic Mood & Session Vibe Shelf
+            launch {
+                try {
+                    val sessionVibe = com.music.bitchord.data.taste.UserTasteProfile.getActiveSessionVibe()
+                    val artistHint = sessionVibe.topArtists.firstOrNull() ?: ""
+                    val query = "$artistHint ${sessionVibe.moodKeywords}".trim()
+                    YtMusicRepository.search(query, SearchFilter.SONGS).onSuccess { results ->
+                        val items = results.filterIsInstance<SearchResult.Track>()
+                            .filterNot { sessionVibe.antiFatigueIds.contains(it.song.videoId) }
+                            .map { tr ->
+                                ShelfItem(
+                                    title = tr.song.title,
+                                    subtitle = tr.song.artist,
+                                    thumbnailUrl = tr.song.thumbnailUrl,
+                                    videoId = tr.song.videoId,
+                                    browseId = null,
+                                )
+                            }
+                        if (items.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
+                            val shelf = HomeShelf(
+                                title = "Your Vibe • ${sessionVibe.moodTag}",
+                                subtitle = "Curated from your recent listens & activity",
+                                items = items.take(15),
+                            )
+                            publishHomeShelves(listOf(shelf), prepend = true)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
             // 3. Daily Mix 1: Romantic & Soulful
             launch {
                 try {
@@ -2356,6 +2386,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun searchFor(term: String) {
         _query.value = term
         searchSubmitted = true
+        com.music.bitchord.data.taste.UserTasteProfile.recordSearchIntent(term)
         _suggestions.value = emptyList()
         _typeaheadResults.value = emptyList()
         // Picking a suggestion or history item is deliberate, but it must NOT
@@ -2403,6 +2434,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val q = _query.value.trim()
         if (q.isEmpty() || _searchSource.value == SearchSource.LIBRARY) return
         searchSubmitted = true
+        com.music.bitchord.data.taste.UserTasteProfile.recordSearchIntent(q)
         _suggestions.value = emptyList()
         _typeaheadResults.value = emptyList()
         if (_searchSource.value == SearchSource.ADDONS) {
@@ -2947,6 +2979,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         thumbnailUrl: String? = null,
         type: BrowseType = BrowseType.OTHER,
     ) {
+        if (title.isNotBlank()) {
+            com.music.bitchord.data.taste.UserTasteProfile.recordBrowsingIntent(title, subtitle)
+        }
         // A fast double tap used to push two identical loading pages and launch
         // two identical browse requests. Besides wasting the connection, both
         // completions then raced to update every matching browse id in the
