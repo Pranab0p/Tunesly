@@ -83,7 +83,9 @@ object AppUpdateChecker {
                     val obj = json.parseToJsonElement(body) as? JsonObject
                     if (obj != null) {
                         val ver = obj["version"]?.jsonPrimitive?.contentOrNull?.removePrefix("v")
-                        val apk = obj["apkUrl"]?.jsonPrimitive?.contentOrNull
+                        val isArm64 = Build.SUPPORTED_ABIS.any { it.equals("arm64-v8a", ignoreCase = true) }
+                        val arm64Apk = obj["apkArm64Url"]?.jsonPrimitive?.contentOrNull
+                        val apk = if (isArm64 && !arm64Apk.isNullOrBlank()) arm64Apk else obj["apkUrl"]?.jsonPrimitive?.contentOrNull
                         val relUrl = obj["releaseUrl"]?.jsonPrimitive?.contentOrNull ?: "https://vibestudio.blog/tunesly"
                         val notes = obj["notes"]?.jsonPrimitive?.contentOrNull
                         if (ver != null && isNewer(ver, BuildConfig.VERSION_NAME)) {
@@ -214,6 +216,9 @@ object AppUpdateChecker {
                         output.flush()
                     }
                 }
+                if (total != null && total > 0L && readTotal < total) {
+                    error("Download incomplete: $readTotal of $total bytes received")
+                }
             }
             _download.value = DownloadState.Ready(target)
         }.onFailure { error ->
@@ -254,6 +259,11 @@ object AppUpdateChecker {
                         .setData(Uri.parse("package:${context.packageName}"))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 )
+            }.recoverCatching {
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
             }.isSuccess
             if (opened) return
         }
@@ -261,7 +271,6 @@ object AppUpdateChecker {
         val installIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-            putExtra(Intent.EXTRA_RETURN_RESULT, true)
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_ACTIVITY_NEW_TASK or
