@@ -191,66 +191,6 @@ fun UserProfileScreen(
                 bottom = contentPadding.calculateBottomPadding(),
             )
     ) {
-        // --- 1. Top Navigation Bar (Tunesly Style) ---
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-
-            Spacer(Modifier.width(4.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = profile.displayName.ifBlank { profile.username },
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "@${profile.username}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                )
-            }
-
-            IconButton(
-                onClick = {
-                    val shareUrl = "https://www.tunesly.online/user/@${profile.username}"
-                    val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(
-                            android.content.Intent.EXTRA_TEXT,
-                            "Check out ${profile.displayName.ifBlank { profile.username }}'s profile on Tunesly: $shareUrl"
-                        )
-                    }
-                    try {
-                        context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Profile"))
-                    } catch (e: Exception) {
-                        clipboardManager.setText(AnnotatedString(shareUrl))
-                        Toast.makeText(context, "Link copied to clipboard: $shareUrl", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.IosShare,
-                    contentDescription = "Share Profile",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
-
-        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
 
         val displayPlaylists = remember(profile.playlists, profile.isMe) {
             if (profile.isMe) {
@@ -354,20 +294,41 @@ fun UserProfileScreen(
 
                         Spacer(Modifier.height(14.dp))
 
+                        val isDevAccount = profile.username.equals("pranab", ignoreCase = true)
+
                         // Display Name & Username Handle
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
                             Text(
                                 text = profile.displayName.ifBlank { profile.username },
                                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
-                            Spacer(Modifier.width(6.dp))
-                            Icon(
-                                imageVector = Icons.Rounded.CheckCircle,
-                                contentDescription = "Verified Listener",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp),
-                            )
+                            if (isDevAccount) {
+                                Icon(
+                                    imageVector = Icons.Rounded.CheckCircle,
+                                    contentDescription = "Official Developer",
+                                    tint = Color(0xFF38BDF8),
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFF38BDF8).copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
+                                ) {
+                                    Text(
+                                        text = "Developer",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF38BDF8),
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                    )
+                                }
+                            }
                         }
 
                         Text(
@@ -453,19 +414,49 @@ fun UserProfileScreen(
 
                         // Action Buttons
                         if (profile.isMe) {
-                            Button(
-                                onClick = { showEditProfileDialog = true },
-                                shape = RoundedCornerShape(14.dp),
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Edit Profile & DP", fontWeight = FontWeight.Bold)
+                                Button(
+                                    onClick = { showEditProfileDialog = true },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Edit Profile & DP", fontWeight = FontWeight.Bold)
+                                }
+
+                                FilledTonalButton(
+                                    onClick = {
+                                        val shareUrl = "https://www.tunesly.online/user/@${profile.username}"
+                                        val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(
+                                                android.content.Intent.EXTRA_TEXT,
+                                                "Check out my profile on Tunesly: $shareUrl"
+                                            )
+                                        }
+                                        try {
+                                            context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Profile"))
+                                        } catch (e: Exception) {
+                                            clipboardManager.setText(AnnotatedString(shareUrl))
+                                            Toast.makeText(context, "Link copied to clipboard: $shareUrl", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(14.dp),
+                                    contentPadding = PaddingValues(10.dp),
+                                ) {
+                                    Icon(Icons.Rounded.IosShare, contentDescription = "Share Profile", modifier = Modifier.size(18.dp))
+                                }
                             }
                         } else {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 if (isFollowing) {
                                     OutlinedButton(
@@ -482,10 +473,16 @@ fun UserProfileScreen(
                                         },
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(14.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                     ) {
                                         Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Following")
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = "Following",
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            style = MaterialTheme.typography.labelLarge,
+                                        )
                                     }
                                 } else {
                                     Button(
@@ -502,8 +499,15 @@ fun UserProfileScreen(
                                         },
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(14.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                     ) {
-                                        Text("Follow", fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = "Follow",
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            style = MaterialTheme.typography.labelLarge,
+                                        )
                                     }
                                 }
 
@@ -511,17 +515,47 @@ fun UserProfileScreen(
                                     onClick = { onMessageClick(profile.username) },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(14.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                 ) {
                                     Icon(Icons.AutoMirrored.Rounded.Message, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Message")
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = "Message",
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
                                 }
 
                                 FilledTonalButton(
                                     onClick = { onJamClick(profile.username) },
                                     shape = RoundedCornerShape(14.dp),
+                                    contentPadding = PaddingValues(10.dp),
                                 ) {
                                     Icon(Icons.Rounded.Headphones, contentDescription = "Jam", modifier = Modifier.size(18.dp))
+                                }
+
+                                FilledTonalButton(
+                                    onClick = {
+                                        val shareUrl = "https://www.tunesly.online/user/@${profile.username}"
+                                        val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(
+                                                android.content.Intent.EXTRA_TEXT,
+                                                "Check out ${profile.displayName.ifBlank { profile.username }}'s profile on Tunesly: $shareUrl"
+                                            )
+                                        }
+                                        try {
+                                            context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Profile"))
+                                        } catch (e: Exception) {
+                                            clipboardManager.setText(AnnotatedString(shareUrl))
+                                            Toast.makeText(context, "Link copied to clipboard: $shareUrl", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(14.dp),
+                                    contentPadding = PaddingValues(10.dp),
+                                ) {
+                                    Icon(Icons.Rounded.IosShare, contentDescription = "Share Profile", modifier = Modifier.size(18.dp))
                                 }
                             }
                         }

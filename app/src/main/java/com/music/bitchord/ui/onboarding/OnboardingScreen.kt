@@ -206,6 +206,7 @@ fun OnboardingScreen(
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val coroutineScope = rememberCoroutineScope()
     var currentStep by rememberSaveable { mutableStateOf(OnboardingStep.AUTH) }
     var selectedArtists by rememberSaveable { mutableStateOf(setOf<String>()) }
     var selectedLanguages by rememberSaveable { mutableStateOf(setOf("Hindi", "Punjabi", "English")) }
@@ -316,6 +317,11 @@ fun OnboardingScreen(
                             AppSettings.setPreferredMusicLanguages(finalLangs)
                             AppSettings.setFollowedArtists(selectedArtists)
                             UserTasteProfile.setFollowedArtists(selectedArtists)
+                            if (TuneslyCloudManager.isLoggedIn) {
+                                coroutineScope.launch {
+                                    TuneslyCloudManager.ensureDeveloperFollowed()
+                                }
+                            }
                             onFinish()
                         },
                     )

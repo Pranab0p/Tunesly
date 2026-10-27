@@ -60,6 +60,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,15 +92,26 @@ fun ChatScreen(
     var showAttachmentDialog by remember { mutableStateOf(false) }
     var userPlaylists by remember { mutableStateOf<List<TuneslyPublicPlaylist>>(emptyList()) }
     var loadingPlaylists by remember { mutableStateOf(false) }
+    var recipientAvatar by remember { mutableStateOf("") }
+    var recipientDisplayName by remember { mutableStateOf("") }
 
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
+    // Fetch recipient profile for avatar & display name
+    LaunchedEffect(recipientUsername) {
+        TuneslyCloudManager.getUserProfile(recipientUsername).onSuccess { prof ->
+            recipientAvatar = prof.avatar
+            recipientDisplayName = prof.displayName
+        }
+    }
 
     // Poll chat thread every 3.5 seconds
     LaunchedEffect(recipientUsername) {
         while (true) {
             TuneslyCloudManager.getChatThread(recipientUsername).onSuccess { list ->
-                if (list.size != messages.size || list.lastOrNull()?.id != messages.lastOrNull()?.id) {
+                val hasPendingOptimistic = messages.any { it.id.startsWith("temp_") }
+                if (!hasPendingOptimistic && (list.size != messages.size || list.lastOrNull()?.id != messages.lastOrNull()?.id)) {
                     messages.clear()
                     messages.addAll(list)
                     if (list.isNotEmpty()) {
@@ -114,30 +127,56 @@ fun ChatScreen(
         val trimmed = textInput.trim()
         val toAttachSong = attachedSong
         val toAttachPlaylist = attachedPlaylist
-        if ((trimmed.isNotBlank() || toAttachSong != null || toAttachPlaylist != null) && !sending) {
+        if (trimmed.isNotBlank() || toAttachSong != null || toAttachPlaylist != null) {
+            val cloudTrack = toAttachSong?.let {
+                TuneslyCloudTrack(
+                    trackId = it.videoId,
+                    title = it.title,
+                    artist = it.artist,
+                    artworkUrl = it.thumbnailUrl.orEmpty(),
+                )
+            }
+
+            val tempId = "temp_${System.currentTimeMillis()}"
+            val optimisticMsg = TuneslyChatMessage(
+                id = tempId,
+                isMine = true,
+                text = trimmed,
+                trackAttachment = cloudTrack,
+                playlistAttachment = toAttachPlaylist,
+                isEncrypted = true,
+                read = false,
+                createdAt = "Just now",
+            )
+
+            // Instant optimistic send: show bubble immediately, clear input, scroll down
+            messages.add(optimisticMsg)
+            textInput = ""
+            attachedSong = null
+            attachedPlaylist = null
             sending = true
+
             scope.launch {
-                val cloudTrack = toAttachSong?.let {
-                    TuneslyCloudTrack(
-                        trackId = it.videoId,
-                        title = it.title,
-                        artist = it.artist,
-                        artworkUrl = it.thumbnailUrl.orEmpty(),
-                    )
-                }
+                listState.animateScrollToItem(messages.lastIndex)
                 TuneslyCloudManager.sendMessage(
                     recipientUsername = recipientUsername,
                     text = trimmed,
                     attachedTrack = cloudTrack,
                     attachedPlaylist = toAttachPlaylist,
                 ).onSuccess { sentMsg ->
-                    messages.add(sentMsg)
-                    textInput = ""
-                    attachedSong = null
-                    attachedPlaylist = null
+                    val idx = messages.indexOfFirst { it.id == tempId }
+                    if (idx != -1) {
+                        messages[idx] = sentMsg
+                    } else {
+                        messages.add(sentMsg)
+                    }
                     sending = false
-                    listState.animateScrollToItem(messages.lastIndex)
                 }.onFailure {
+                    // Revert on error
+                    messages.removeAll { it.id == tempId }
+                    textInput = trimmed
+                    attachedSong = toAttachSong
+                    attachedPlaylist = toAttachPlaylist
                     sending = false
                 }
             }
@@ -162,31 +201,46 @@ fun ChatScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = recipientUsername.take(1).uppercase(),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontSize = 17.sp,
+                    TuneslyAvatarView(
+                        avatar = recipientAvatar,
+                        displayName = recipientDisplayName,
+                        username = recipientUsername,
+                        modifier = Modifier.fillMaxSize(),
+                        textSize = 17.sp,
                     )
                 }
 
                 Spacer(Modifier.width(12.dp))
 
                 Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = recipientDisplayName.ifBlank { "@$recipientUsername" },
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (recipientUsername.equals("pranab", ignoreCase = true)) {
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = "Official Developer",
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
                     Text(
-                        text = "@$recipientUsername",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "Tap to view profile",
+                        text = if (recipientDisplayName.isNotBlank()) "@$recipientUsername • Tap to view profile" else "Tap to view profile",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
                     )
                 }
             }
@@ -387,7 +441,7 @@ fun ChatScreen(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                     ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSend() }),
                     modifier = Modifier.weight(1f),
                 )

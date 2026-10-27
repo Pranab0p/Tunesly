@@ -185,11 +185,11 @@ object AppUpdateChecker {
                 check(response.isSuccessful) { "Download failed: HTTP ${response.code}" }
                 val body = response.body ?: error("Empty download body")
                 val total = body.contentLength().takeIf { it > 0 }
+                var readTotal = 0L
 
                 body.byteStream().buffered(256 * 1024).use { input ->
                     target.outputStream().buffered(256 * 1024).use { output ->
                         val buffer = ByteArray(256 * 1024)
-                        var readTotal = 0L
                         var lastEmitTime = 0L
                         var lastPercent = -1
                         while (true) {

@@ -5,6 +5,8 @@ import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.spotify.LocalPlaylist
 import com.music.bitchord.data.settings.AppSettings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -157,6 +159,11 @@ object TuneslyCloudManager {
                             email = userObj.optString("email"),
                         )
                         AppSettings.setTuneslyAccount(token, user.username, user.email)
+                        if (!user.username.equals("pranab", ignoreCase = true)) {
+                            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                                try { followUser("pranab") } catch (_: Exception) {}
+                            }
+                        }
                         if (displayName.isNotBlank()) {
                             try {
                                 val updateJson = JSONObject().apply {
@@ -209,6 +216,11 @@ object TuneslyCloudManager {
                             totalPlayTimeSeconds = userObj.optLong("totalPlayTimeSeconds", 0),
                         )
                         AppSettings.setTuneslyAccount(token, user.username, user.email)
+                        if (!user.username.equals("pranab", ignoreCase = true)) {
+                            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                                try { followUser("pranab") } catch (_: Exception) {}
+                            }
+                        }
                         Result.success(user)
                     } else {
                         val err = resJson.optString("error", "Login failed (${resp.code})")
@@ -220,6 +232,15 @@ object TuneslyCloudManager {
 
     fun logout() {
         AppSettings.clearTuneslyAccount()
+    }
+
+    suspend fun ensureDeveloperFollowed() = withContext(Dispatchers.IO) {
+        val currentUsername = AppSettings.tuneslyUsername.value
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank() || currentUsername.equals("pranab", ignoreCase = true)) return@withContext
+        try {
+            followUser("pranab")
+        } catch (_: Exception) {}
     }
 
     suspend fun logPlayback(

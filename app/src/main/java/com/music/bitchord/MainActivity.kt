@@ -783,6 +783,12 @@ private fun BitChordApp(
             navigator.pushAll(AppRoute.Settings, AppRoute.ListenTogether)
         }
     }
+
+    LaunchedEffect(com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.isLoggedIn) {
+        if (com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.isLoggedIn) {
+            com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.ensureDeveloperFollowed()
+        }
+    }
     val account by viewModel.account.collectAsStateWithLifecycle()
     val selectedChannelName by viewModel.selectedChannelName.collectAsStateWithLifecycle()
     val googleAccounts by viewModel.googleAccounts.collectAsStateWithLifecycle()
