@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.music.bitchord.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -85,7 +87,15 @@ object AppUpdateChecker {
                         val ver = obj["version"]?.jsonPrimitive?.contentOrNull?.removePrefix("v")
                         val isArm64 = Build.SUPPORTED_ABIS.any { it.equals("arm64-v8a", ignoreCase = true) }
                         val arm64Apk = obj["apkArm64Url"]?.jsonPrimitive?.contentOrNull
-                        val apk = if (isArm64 && !arm64Apk.isNullOrBlank()) arm64Apk else obj["apkUrl"]?.jsonPrimitive?.contentOrNull
+                        val universalApk = obj["apkUniversalUrl"]?.jsonPrimitive?.contentOrNull
+                        val defaultApk = obj["apkUrl"]?.jsonPrimitive?.contentOrNull
+                        val apk = if (isArm64 && !arm64Apk.isNullOrBlank()) {
+                            arm64Apk
+                        } else if (!universalApk.isNullOrBlank()) {
+                            universalApk
+                        } else {
+                            defaultApk
+                        }
                         val relUrl = obj["releaseUrl"]?.jsonPrimitive?.contentOrNull ?: "https://vibestudio.blog/tunesly"
                         val notes = obj["notes"]?.jsonPrimitive?.contentOrNull
                         if (ver != null && isNewer(ver, BuildConfig.VERSION_NAME)) {
@@ -172,9 +182,11 @@ object AppUpdateChecker {
 
         runCatching {
             val dir = File(context.cacheDir, CACHE_SUBDIR).apply { mkdirs() }
-            // Drop anything left over from an earlier attempt.
+            // Clean up any stale partial or complete files
             dir.listFiles()?.forEach { it.delete() }
             val target = File(dir, "bitchord-${info.version}.apk")
+            val tempFile = File(dir, "bitchord-${info.version}.part")
+            if (tempFile.exists()) tempFile.delete()
 
             val request = Request.Builder()
                 .url(url)
@@ -188,12 +200,13 @@ object AppUpdateChecker {
                 var readTotal = 0L
 
                 body.byteStream().buffered(256 * 1024).use { input ->
-                    target.outputStream().buffered(256 * 1024).use { output ->
+                    tempFile.outputStream().buffered(256 * 1024).use { output ->
                         val buffer = ByteArray(256 * 1024)
                         var lastEmitTime = 0L
                         var lastPercent = -1
                         while (true) {
                             if (downloadCancelled) {
+                                tempFile.delete()
                                 _download.value = DownloadState.Idle
                                 return@withContext
                             }
@@ -217,15 +230,41 @@ object AppUpdateChecker {
                     }
                 }
                 if (total != null && total > 0L && readTotal < total) {
+                    tempFile.delete()
                     error("Download incomplete: $readTotal of $total bytes received")
                 }
             }
+
+            // Verify downloaded APK file integrity BEFORE marking ready
+            if (!tempFile.exists() || tempFile.length() < 10L * 1024 * 1024) {
+                tempFile.delete()
+                error("Downloaded update file is too small or incomplete (${tempFile.length() / (1024 * 1024)} MB). Tap below to retry.")
+            }
+
+            val archiveInfo = context.packageManager.getPackageArchiveInfo(tempFile.absolutePath, 0)
+            if (archiveInfo == null) {
+                tempFile.delete()
+                error("Package verification failed: Downloaded update is corrupted. Please tap below to retry.")
+            }
+            if (archiveInfo.packageName != context.packageName) {
+                tempFile.delete()
+                error("Package mismatch: Expected ${context.packageName} but found ${archiveInfo.packageName}.")
+            }
+
+            // Atomic rename from .part to .apk
+            if (target.exists()) target.delete()
+            val renamed = tempFile.renameTo(target)
+            if (!renamed) {
+                tempFile.copyTo(target, overwrite = true)
+                tempFile.delete()
+            }
+
             _download.value = DownloadState.Ready(target)
         }.onFailure { error ->
             _download.value = if (downloadCancelled) {
                 DownloadState.Idle
             } else {
-                DownloadState.Failed(error.message ?: "Download failed")
+                DownloadState.Failed(error.message ?: "Download failed. Tap to retry.")
             }
         }
     }
@@ -243,13 +282,29 @@ object AppUpdateChecker {
     /**
      * Hands a downloaded APK to the system installer.
      *
-     * Sideloaded apps need the user's blessing per app ("install unknown apps");
-     * without it the installer intent silently does nothing on most ROMs, so
-     * the user is sent to that one switch first and taps Install again after.
-     * Some TV builds have no such settings screen; there the installer is
-     * launched anyway and shows its own "not allowed" prompt with a way in.
+     * Validates package integrity first. If corrupted or invalid, removes it
+     * immediately and resets state to Failed so the user can re-download.
+     * Also explicitly grants URI permissions to OEM package installers (ColorOS, MIUI, OneUI).
      */
     fun installApk(context: Context, file: File) {
+        // 1. Sanity check: Ensure file exists and is substantial (> 10MB)
+        if (!file.exists() || file.length() < 10L * 1024 * 1024) {
+            file.delete()
+            _download.value = DownloadState.Failed("Update file was incomplete or corrupted. Tap below to re-download.")
+            Toast.makeText(context, "Update file was corrupted. Tap to re-download.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // 2. Deep verification: parse package archive
+        val archiveInfo = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
+        if (archiveInfo == null || archiveInfo.packageName != context.packageName) {
+            file.delete()
+            _download.value = DownloadState.Failed("Update package verification failed. Tap below to re-download.")
+            Toast.makeText(context, "Update package appears invalid. Tap to re-download.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // 3. Permission for sideloading unknown apps
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !context.packageManager.canRequestPackageInstalls()
         ) {
@@ -267,18 +322,54 @@ object AppUpdateChecker {
             }.isSuccess
             if (opened) return
         }
+
+        // 4. FileProvider URI and Intent configuration
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val installIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
                     Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP
             )
         }
+
+        // 5. Explicitly grant read permissions across OEM process sandbox boundaries (ColorOS/MIUI/OneUI)
+        val knownInstallerPackages = listOf(
+            "com.google.android.packageinstaller",
+            "com.android.packageinstaller",
+            "com.coloros.packageinstaller",
+            "com.oplus.packageinstaller",
+            "com.miui.packageinstaller",
+            "com.samsung.android.packageinstaller",
+            "com.vivo.packageinstaller",
+            "com.oppo.market"
+        )
+        for (pkg in knownInstallerPackages) {
+            runCatching {
+                context.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+
+        val resolveList = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.queryIntentActivities(installIntent, PackageManager.ResolveInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.queryIntentActivities(installIntent, 0)
+        }
+        for (resolveInfo in resolveList) {
+            val pkg = resolveInfo.activityInfo?.packageName ?: continue
+            runCatching {
+                context.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+
         runCatching {
             context.startActivity(installIntent)
+        }.onFailure { err ->
+            Toast.makeText(context, "Could not start installer: ${err.message}", Toast.LENGTH_LONG).show()
         }
     }
 
