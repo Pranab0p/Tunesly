@@ -677,26 +677,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * registered, and people tap again.
      */
     fun setLike(videoId: String, status: LikeStatus) {
-        if (!requireSignIn()) return
         val previous = likeStatusOf(videoId)
         if (previous == status) return
         LikeState.set(videoId, status)
-        viewModelScope.launch {
-            YtMusicRepository.rate(videoId, status).fold(
-                onSuccess = {
-                    // Liked Music is now out of date either way.
-                    libraryStale = true
-                    if (status != LikeStatus.LIKE) dropFromLikedLists(videoId)
-                    // Clearing the heart means forgetting the song, not
-                    // demoting it — see [forgetFromLibrary].
-                    val unliked = previous == LikeStatus.LIKE &&
-                        status == LikeStatus.INDIFFERENT
-                    if (unliked) forgetFromLibrary(videoId)
-                },
-                onFailure = {
-                    LikeState.set(videoId, previous)
-                },
-            )
+        if (_signedIn.value) {
+            viewModelScope.launch {
+                YtMusicRepository.rate(videoId, status).fold(
+                    onSuccess = {
+                        // Liked Music is now out of date either way.
+                        libraryStale = true
+                        if (status != LikeStatus.LIKE) dropFromLikedLists(videoId)
+                        // Clearing the heart means forgetting the song, not
+                        // demoting it — see [forgetFromLibrary].
+                        val unliked = previous == LikeStatus.LIKE &&
+                            status == LikeStatus.INDIFFERENT
+                        if (unliked) forgetFromLibrary(videoId)
+                    },
+                    onFailure = {
+                        LikeState.set(videoId, previous)
+                    },
+                )
+            }
         }
     }
 
@@ -764,7 +765,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** As [toggleLike], for the thumb-down. */
     fun toggleDislike(videoId: String): LikeStatus? {
-        if (!requireSignIn()) return null
         val previous = likeStatusOf(videoId)
         setLike(
             videoId,
@@ -901,11 +901,61 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Re-fetched rather than cached for the session: playlists are edited here. */
     fun loadPlaylists() {
-        if (!_signedIn.value || _playlistsLoading.value) return
+        if (_playlistsLoading.value) return
+        val localList = com.music.bitchord.data.spotify.LocalPlaylistStore.playlists.value
+            .filterNot { it.id == "liked_songs" }
+            .map { lp ->
+                UserPlaylist(
+                    playlistId = lp.id,
+                    title = lp.title,
+                    subtitle = "${lp.songs.size} songs",
+                    thumbnailUrl = lp.songs.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl,
+                )
+            }
+        _playlists.value = localList
         val identity = listenerKey()
         _playlistsLoading.value = true
         viewModelScope.launch {
-            YtMusicRepository.userPlaylists().onSuccess { if (identity == listenerKey()) _playlists.value = it }
+            // Sync with Tunesly Cloud VPS database
+            if (com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.isLoggedIn) {
+                try {
+                    val cloudPlaylists = com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.fetchPlaylists().getOrNull()
+                    if (!cloudPlaylists.isNullOrEmpty()) {
+                        for (cp in cloudPlaylists) {
+                            val exists = com.music.bitchord.data.spotify.LocalPlaylistStore.playlists.value.any { it.id == cp.id }
+                            if (!exists) {
+                                com.music.bitchord.data.spotify.LocalPlaylistStore.savePlaylist(cp.title, cp.songs)
+                            }
+                        }
+                    }
+                    val cloudFavs = com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.fetchFavorites().getOrNull()
+                    if (!cloudFavs.isNullOrEmpty()) {
+                        for (fav in cloudFavs) {
+                            com.music.bitchord.data.spotify.LocalPlaylistStore.addSongToPlaylist("liked_songs", fav)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            val refreshedLocal = com.music.bitchord.data.spotify.LocalPlaylistStore.playlists.value
+                .filterNot { it.id == "liked_songs" }
+                .map { lp ->
+                    UserPlaylist(
+                        playlistId = lp.id,
+                        title = lp.title,
+                        subtitle = "${lp.songs.size} songs",
+                        thumbnailUrl = lp.songs.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl,
+                    )
+                }
+
+            if (_signedIn.value) {
+                YtMusicRepository.userPlaylists().fold(
+                    onSuccess = { if (identity == listenerKey()) _playlists.value = refreshedLocal + it },
+                    onFailure = { if (identity == listenerKey()) _playlists.value = refreshedLocal }
+                )
+            } else {
+                if (identity == listenerKey()) _playlists.value = refreshedLocal
+            }
             if (identity == listenerKey()) _playlistsLoading.value = false
         }
     }
@@ -989,7 +1039,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         song: Song,
         onResult: (added: Int, alreadyThere: Int, failed: Int) -> Unit = { _, _, _ -> },
     ) {
-        if (!requireSignIn() || playlists.isEmpty()) return
+        if (playlists.isEmpty()) return
         viewModelScope.launch {
             val outcomes = playlists.map { addOne(it, song) }
             onResult(
@@ -1003,6 +1053,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private enum class AddOutcome { ADDED, ALREADY_THERE, FAILED }
 
     private suspend fun addOne(playlist: UserPlaylist, song: Song): AddOutcome {
+        if (playlist.playlistId.startsWith("sp_local_") || playlist.browseId.startsWith("local:playlist:") || !_signedIn.value) {
+            val added = com.music.bitchord.data.spotify.LocalPlaylistStore.addSongToPlaylist(playlist.playlistId, song)
+            if (added && com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.isLoggedIn) {
+                try {
+                    com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.addTrackToCloudPlaylist(playlist.playlistId, song)
+                } catch (_: Exception) {}
+            }
+            return if (added) AddOutcome.ADDED else AddOutcome.ALREADY_THERE
+        }
         val openSongs = (_detailStack.value.firstOrNull { it.browseId == playlist.browseId }
             ?.songs as? UiState.Success)?.data
         val known = openSongs
@@ -1027,52 +1086,69 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * playlist the user has to add to again.
      */
     fun createPlaylist(title: String, privacy: PlaylistPrivacy, song: Song? = null) {
-        if (!requireSignIn()) return
         val name = title.trim().ifBlank { text(R.string.new_playlist) }
         viewModelScope.launch {
-            YtMusicRepository.createPlaylist(
-                title = name,
-                privacy = privacy,
-                videoIds = listOfNotNull(song?.videoId),
-            ).fold(
-                onSuccess = { playlistId ->
-                    // Nothing to look up for a playlist this account has just
-                    // made: it is the owner by construction, so its card is
-                    // editable the moment it appears rather than one request
-                    // after someone holds it.
-                    setPlaylistOwned("VL$playlistId", true)
-                    libraryStale = true
-                    val created = UserPlaylist(
-                        playlistId = playlistId,
-                        title = name,
-                        // Only what this request itself establishes. Both
-                        // surfaces that draw it leave a blank one out, so an
-                        // unseeded playlist gets a card of just its name rather
-                        // than a guess at what the feed will call it.
-                        subtitle = if (song != null) "1 song" else "",
-                        thumbnailUrl = song?.thumbnailUrl,
-                    )
-                    // Drawn from what was just sent rather than waited for: the
-                    // library feed does not have this playlist yet, and the
-                    // fetch that used to run here answered without it — see
-                    // [editPlaylistShelf]. Leads the shelf because it is the
-                    // newest, which is the order the feed itself comes in.
-                    _playlists.value = listOf(created) +
-                        _playlists.value.filterNot { it.playlistId == created.playlistId }
-                    editPlaylistShelf { items ->
-                        listOf(
-                            ShelfItem(
-                                title = created.title,
-                                subtitle = created.subtitle,
-                                thumbnailUrl = created.thumbnailUrl,
-                                videoId = null,
-                                browseId = created.browseId,
-                            ),
-                        ) + items.filterNot { it.browseId == created.browseId }
-                    }
-                },
-                onFailure = {},
-            )
+            if (_signedIn.value) {
+                YtMusicRepository.createPlaylist(
+                    title = name,
+                    privacy = privacy,
+                    videoIds = listOfNotNull(song?.videoId),
+                ).fold(
+                    onSuccess = { playlistId ->
+                        // Nothing to look up for a playlist this account has just
+                        // made: it is the owner by construction, so its card is
+                        // editable the moment it appears rather than one request
+                        // after someone holds it.
+                        setPlaylistOwned("VL$playlistId", true)
+                        libraryStale = true
+                        val created = UserPlaylist(
+                            playlistId = playlistId,
+                            title = name,
+                            subtitle = if (song != null) "1 song" else "",
+                            thumbnailUrl = song?.thumbnailUrl,
+                        )
+                        _playlists.value = listOf(created) +
+                            _playlists.value.filterNot { it.playlistId == created.playlistId }
+                        editPlaylistShelf { items ->
+                            listOf(
+                                ShelfItem(
+                                    title = created.title,
+                                    subtitle = created.subtitle,
+                                    thumbnailUrl = created.thumbnailUrl,
+                                    videoId = null,
+                                    browseId = created.browseId,
+                                ),
+                            ) + items.filterNot { it.browseId == created.browseId }
+                        }
+                    },
+                    onFailure = {
+                        val local = com.music.bitchord.data.spotify.LocalPlaylistStore.savePlaylist(name, listOfNotNull(song))
+                        val created = UserPlaylist(
+                            playlistId = local.id,
+                            title = local.title,
+                            subtitle = if (song != null) "1 song" else "0 songs",
+                            thumbnailUrl = song?.thumbnailUrl,
+                        )
+                        _playlists.value = listOf(created) + _playlists.value.filterNot { it.playlistId == created.playlistId }
+                    },
+                )
+            } else {
+                val local = com.music.bitchord.data.spotify.LocalPlaylistStore.savePlaylist(name, listOfNotNull(song))
+                val created = UserPlaylist(
+                    playlistId = local.id,
+                    title = local.title,
+                    subtitle = if (song != null) "1 song" else "0 songs",
+                    thumbnailUrl = song?.thumbnailUrl,
+                )
+                _playlists.value = listOf(created) + _playlists.value.filterNot { it.playlistId == created.playlistId }
+
+                // Sync new playlist to Tunesly Cloud Database
+                if (com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.isLoggedIn) {
+                    try {
+                        com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.createCloudPlaylist(name, listOfNotNull(song))
+                    } catch (_: Exception) {}
+                }
+            }
         }
     }
 
@@ -1139,6 +1215,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * row out from under the reader rather than waiting for a re-fetch.
      */
     fun removeFromPlaylist(browseId: String, song: Song) {
+        if (browseId.startsWith("local:playlist:")) {
+            com.music.bitchord.data.spotify.LocalPlaylistStore.removeSongFromPlaylist(browseId, song.videoId)
+            reloadLocalDetail(browseId)
+            return
+        }
         val setVideoId = song.setVideoId ?: return
         if (!requireSignIn()) return
         val playlistId = browseId.removePrefix("VL")
@@ -2154,21 +2235,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * history on.
      */
     fun loadHistory() {
-        if (!_signedIn.value) {
-            _history.value = UiState.Error(text(R.string.history_sign_in_required))
-            return
-        }
         val identity = listenerKey()
         _history.value = UiState.Loading
         viewModelScope.launch {
-            val next = YtMusicRepository.history().fold(
-                onSuccess = { songs ->
-                    if (songs.isEmpty()) UiState.Error(text(R.string.history_empty))
-                    else UiState.Success(songs)
-                },
-                onFailure = { UiState.Error(it.friendly()) },
-            )
-            if (identity == listenerKey()) _history.value = next
+            // 1. If signed into Google / YouTube Music, try YtMusicRepository
+            if (_signedIn.value) {
+                val ytResult = YtMusicRepository.history().getOrNull()
+                if (!ytResult.isNullOrEmpty()) {
+                    if (identity == listenerKey()) _history.value = UiState.Success(ytResult)
+                    return@launch
+                }
+            }
+
+            // 2. If logged in to Tunesly Cloud VPS database, fetch from backend
+            if (com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.isLoggedIn) {
+                val cloudResult = com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.fetchHistory().getOrNull()
+                if (!cloudResult.isNullOrEmpty()) {
+                    com.music.bitchord.data.LocalHistoryStore.mergeRemoteHistory(cloudResult)
+                    if (identity == listenerKey()) {
+                        _history.value = UiState.Success(com.music.bitchord.data.LocalHistoryStore.getHistory())
+                    }
+                    return@launch
+                }
+            }
+
+            // 3. Fallback to Local History Store
+            val localSongs = com.music.bitchord.data.LocalHistoryStore.getHistory()
+            if (identity == listenerKey()) {
+                _history.value = UiState.Success(localSongs)
+            }
         }
     }
 

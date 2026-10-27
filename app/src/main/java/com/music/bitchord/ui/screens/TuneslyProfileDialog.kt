@@ -128,37 +128,6 @@ fun TuneslyProfileDialog(
             ) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-                // Status Badge
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Icon(
-                        Icons.Rounded.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "Connected to VPS Cloud",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = "Server: 194.127.179.229 (Port 5050 / SSL)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        )
-                    }
-                }
-
                 // Stats Section
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -179,12 +148,12 @@ fun TuneslyProfileDialog(
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = "AI Engine",
+                            text = "Cloud Sync",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = "Telemetry Active",
+                            text = if (syncEnabled) "Active" else "Paused",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -221,47 +190,6 @@ fun TuneslyProfileDialog(
                     )
                 }
 
-                // Sync Now Button
-                OutlinedButton(
-                    onClick = {
-                        isSyncing = true
-                        coroutineScope.launch {
-                            val profile = TuneslyCloudManager.fetchProfile()
-                            userProfile = profile.getOrNull()
-                            isSyncing = false
-                            Toast.makeText(context, "Cloud sync complete!", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isSyncing,
-                ) {
-                    if (isSyncing) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Syncing...")
-                    } else {
-                        Icon(Icons.Rounded.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Sync with VPS Now")
-                    }
-                }
-
-                // View Instagram-Style Public Profile
-                if (onViewPublicProfile != null && username.isNotBlank()) {
-                    FilledTonalButton(
-                        onClick = {
-                            onDismiss()
-                            onViewPublicProfile(username)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("View Profile (Instagram Style)")
-                    }
-                }
-
                 // Sign Out
                 Button(
                     onClick = {
@@ -269,11 +197,12 @@ fun TuneslyProfileDialog(
                         Toast.makeText(context, "Signed out of Tunesly Cloud", Toast.LENGTH_SHORT).show()
                         onDismiss()
                     },
+                    modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError,
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
                 ) {
                     Icon(Icons.Rounded.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))

@@ -89,9 +89,51 @@ object LocalPlaylistStore {
         persist(updated)
     }
 
+    fun addSongToPlaylist(id: String, song: Song): Boolean {
+        val cleanId = id.removePrefix("local:playlist:").removePrefix("VL")
+        val current = _playlists.value.firstOrNull { it.id == cleanId || it.id == id || it.browseId == id }
+            ?: if (cleanId == "liked_songs" || id == "liked_songs" || id == "app:liked" || id == "local:liked") {
+                getOrCreateLikedPlaylist()
+            } else null
+            ?: return false
+        if (current.songs.any { it.videoId == song.videoId }) return false
+        val updatedSongs = listOf(song) + current.songs.filterNot { it.videoId == song.videoId }
+        val updatedList = _playlists.value.map {
+            if (it.id == current.id) it.copy(songs = updatedSongs) else it
+        }
+        _playlists.value = updatedList
+        persist(updatedList)
+        return true
+    }
+
+    fun removeSongFromPlaylist(id: String, videoId: String): Boolean {
+        val cleanId = id.removePrefix("local:playlist:").removePrefix("VL")
+        val current = _playlists.value.firstOrNull { it.id == cleanId || it.id == id || it.browseId == id } ?: return false
+        val updatedSongs = current.songs.filterNot { it.videoId == videoId }
+        val updatedList = _playlists.value.map {
+            if (it.id == current.id) it.copy(songs = updatedSongs) else it
+        }
+        _playlists.value = updatedList
+        persist(updatedList)
+        return true
+    }
+
+    fun getOrCreateLikedPlaylist(): LocalPlaylist {
+        val existing = _playlists.value.firstOrNull { it.id == "liked_songs" }
+        if (existing != null) return existing
+        val created = LocalPlaylist(id = "liked_songs", title = "Liked Songs", songs = emptyList())
+        val updated = listOf(created) + _playlists.value
+        _playlists.value = updated
+        persist(updated)
+        return created
+    }
+
     fun getPlaylist(id: String): LocalPlaylist? {
         val cleanId = id.removePrefix("local:playlist:").removePrefix("VL")
         return _playlists.value.firstOrNull { it.id == cleanId || it.id == id || it.browseId == id }
+            ?: if (cleanId == "liked_songs" || id == "liked_songs" || id == "app:liked" || id == "local:liked") {
+                getOrCreateLikedPlaylist()
+            } else null
     }
 
     private fun persist(list: List<LocalPlaylist>) {

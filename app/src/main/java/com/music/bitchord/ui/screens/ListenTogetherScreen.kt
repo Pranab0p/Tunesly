@@ -43,6 +43,29 @@ import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.ChatBubble
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.music.bitchord.data.settings.AppSettings
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -141,6 +164,7 @@ fun ListenTogetherScreen(
      * @see PartyServerEditor for why it cannot live on this screen.
      */
     onEditServer: () -> Unit,
+    onOpenEqualizer: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -157,6 +181,7 @@ fun ListenTogetherScreen(
     var failure by remember { mutableStateOf<String?>(null) }
     var nickname by remember { mutableStateOf(ListenTogether.nickname()) }
     var maxMembers by remember { mutableIntStateOf(5) }
+    var showJamChat by remember { mutableStateOf(false) }
     var pendingServerSwitchInvite by remember { mutableStateOf<Pair<String, String>?>(null) }
     var sheet by remember { mutableStateOf<PartySheet?>(null) }
 
@@ -519,12 +544,23 @@ fun ListenTogetherScreen(
                 onSetCapacity = ListenTogether::setMaxMembers,
                 onSetHostOnlyControl = ListenTogether::setHostOnlyControl,
                 onKick = ListenTogether::kick,
+                onOpenEqualizer = onOpenEqualizer,
+                onOpenChat = { showJamChat = true },
             )
             // Inside the party branch on purpose. A log of who skipped what is
             // a thing to look back over while a party is running; on the page
             // that offers to start one it is a list of somebody else's evening,
             // under a button that has not been pressed yet.
             PartyActivityList(activity)
+
+            if (showJamChat && state.code != null) {
+                JamRoomChatDialog(
+                    roomCode = state.code!!,
+                    currentUserName = state.you?.displayName?.ifBlank { AppSettings.tuneslyUsername.value.ifBlank { "Member" } } ?: "Member",
+                    currentUserAvatar = AppSettings.tuneslyAvatar.value,
+                    onDismiss = { showJamChat = false },
+                )
+            }
         }
 
         // Only when nothing is covering it. A sheet is a drawer over the bottom
@@ -846,6 +882,8 @@ private fun InAParty(
     onSetCapacity: (Int) -> Unit,
     onSetHostOnlyControl: (Boolean) -> Unit,
     onKick: (String) -> Unit,
+    onOpenEqualizer: () -> Unit,
+    onOpenChat: () -> Unit,
 ) {
     SettingsGroup(
         header = stringResource(R.string.listen_together_code),
@@ -878,6 +916,22 @@ private fun InAParty(
     }
 
     NowPlayingInTheParty(state)
+
+    SettingsGroup(header = "Party Sound & Chat") {
+        SettingsRow(
+            icon = Icons.Rounded.ChatBubble,
+            title = "Jam Live Chat",
+            subtitle = "Chat in real-time with everyone listening",
+            onClick = onOpenChat,
+        )
+        RowDivider()
+        SettingsRow(
+            icon = Icons.Rounded.GraphicEq,
+            title = "Equalizer & Sound Effects",
+            subtitle = "DSP, Bass Boost, Virtualizer & Custom Presets",
+            onClick = onOpenEqualizer,
+        )
+    }
 
     SettingsGroup(
         header = stringResource(
@@ -1136,4 +1190,267 @@ private fun elapsed(ms: Long): String {
     val minutes = total / 60
     val seconds = total % 60
     return "%d:%02d".format(minutes, seconds)
+}
+
+data class JamChatMessage(
+    val id: String,
+    val text: String,
+    val senderName: String,
+    val senderAvatar: String,
+    val timestamp: Long,
+)
+
+@Composable
+private fun JamRoomChatDialog(
+    roomCode: String,
+    currentUserName: String,
+    currentUserAvatar: String,
+    onDismiss: () -> Unit,
+) {
+    var messages by remember { mutableStateOf<List<JamChatMessage>>(emptyList()) }
+    var inputText by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
+    val httpClient = remember {
+        OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .build()
+    }
+    val jsonMedia = "application/json; charset=utf-8".toMediaType()
+
+    suspend fun refreshMessages() {
+        withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder()
+                    .url("https://www.tunesly.online/api/jam/chat/${roomCode.trim().uppercase()}")
+                    .header("User-Agent", "Tunesly-Android")
+                    .get()
+                    .build()
+                val resp = httpClient.newCall(req).execute()
+                val bodyStr = resp.body?.string().orEmpty()
+                if (resp.isSuccessful) {
+                    val root = JSONObject(bodyStr)
+                    val arr = root.optJSONArray("messages") ?: JSONArray()
+                    val list = mutableListOf<JamChatMessage>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        list.add(
+                            JamChatMessage(
+                                id = obj.optString("id"),
+                                text = obj.optString("text"),
+                                senderName = obj.optString("senderName"),
+                                senderAvatar = obj.optString("senderAvatar"),
+                                timestamp = obj.optLong("timestamp"),
+                            )
+                        )
+                    }
+                    withContext(Dispatchers.Main) {
+                        messages = list
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(roomCode) {
+        while (true) {
+            refreshMessages()
+            delay(2500)
+        }
+    }
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.ChatBubble,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Jam Room Chat",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    )
+                    Text(
+                        text = "Party code: #$roomCode",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(380.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                        .padding(8.dp),
+                ) {
+                    if (messages.isEmpty()) {
+                        Text(
+                            text = "No messages yet.\nSay hello to everyone in the Jam!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(messages, key = { it.id }) { msg ->
+                                val isMine = msg.senderName.equals(currentUserName, ignoreCase = true)
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
+                                    ) {
+                                        if (!isMine) {
+                                            if (msg.senderAvatar.isNotBlank()) {
+                                                AsyncImage(
+                                                    model = msg.senderAvatar,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(18.dp)
+                                                        .clip(CircleShape),
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                            }
+                                            Text(
+                                                text = msg.senderName,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                        }
+                                        Text(
+                                            text = if (msg.timestamp > 0) timeFormat.format(Date(msg.timestamp)) else "",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                            fontSize = 10.sp,
+                                        )
+                                    }
+
+                                    Spacer(Modifier.height(2.dp))
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(
+                                                RoundedCornerShape(
+                                                    topStart = 12.dp,
+                                                    topEnd = 12.dp,
+                                                    bottomStart = if (isMine) 12.dp else 2.dp,
+                                                    bottomEnd = if (isMine) 2.dp else 12.dp,
+                                                )
+                                            )
+                                            .background(
+                                                if (isMine) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    ) {
+                                        Text(
+                                            text = msg.text,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (isMine) MaterialTheme.colorScheme.onPrimary
+                                            else MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it.take(200) },
+                        placeholder = { Text("Send message to Jam...") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(20.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    IconButton(
+                        onClick = {
+                            val textToSend = inputText.trim()
+                            if (textToSend.isBlank() || sending) return@IconButton
+                            sending = true
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        val payload = JSONObject().apply {
+                                            put("text", textToSend)
+                                            put("senderName", currentUserName)
+                                            put("senderAvatar", currentUserAvatar)
+                                        }
+                                        val req = Request.Builder()
+                                            .url("https://www.tunesly.online/api/jam/chat/${roomCode.trim().uppercase()}")
+                                            .header("User-Agent", "Tunesly-Android")
+                                            .post(payload.toString().toRequestBody(jsonMedia))
+                                            .build()
+                                        httpClient.newCall(req).execute()
+                                    } catch (_: Exception) {}
+                                }
+                                inputText = ""
+                                sending = false
+                                refreshMessages()
+                            }
+                        },
+                        enabled = !sending && inputText.isNotBlank(),
+                    ) {
+                        if (sending) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Send,
+                                contentDescription = "Send",
+                                tint = if (inputText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        },
+    )
 }

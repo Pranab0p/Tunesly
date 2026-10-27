@@ -72,6 +72,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.Upgrade
 import com.music.bitchord.data.listentogether.ServerConnectionState
@@ -871,7 +872,7 @@ private fun BitChordApp(
     // Playlists imported without (or instead of) a YouTube Music account live
     // in the app's own store, and sit on the same shelf as the downloaded ones.
     val localPlaylists by com.music.bitchord.data.spotify.LocalPlaylistStore.playlists.collectAsStateWithLifecycle()
-    val localPlaylistItems = localPlaylists.map { playlist ->
+    val localPlaylistItems = localPlaylists.filterNot { it.id == "liked_songs" }.map { playlist ->
         ShelfItem(
             title = playlist.title,
             subtitle = stringResource(R.string.local_playlist_subtitle, playlist.songs.size),
@@ -2012,6 +2013,19 @@ private fun BitChordApp(
                 navigator.push(AppRoute.Spotify)
                 return@let
             }
+            if (id == "app:history" || id == "local:history") {
+                navigator.push(AppRoute.History)
+                viewModel.loadHistory()
+                return@let
+            }
+            if (id == "app:liked" || id == "local:liked") {
+                if (signedIn) {
+                    viewModel.openDetail("FEmusic_liked_videos", item.title, item.subtitle)
+                } else {
+                    viewModel.openDetail("local:playlist:liked_songs", item.title, item.subtitle)
+                }
+                return@let
+            }
             if ((id == "local:all" || id == "local:downloads") && !LocalMediaRepository.hasStoragePermission(context)) {
                 mediaPermissionLauncher.launch(mediaPermission)
             }
@@ -2362,7 +2376,28 @@ private fun BitChordApp(
             autoplayEnabled = autoplayEnabled,
             signedIn = signedIn,
             likeStatus = likeStatuses[song.videoId] ?: LikeStatus.INDIFFERENT,
-            onToggleLike = { viewModel.toggleLike(song.videoId) },
+            onToggleLike = {
+                viewModel.toggleLike(song.videoId)
+                val isLiked = viewModel.likeStatusOf(song.videoId) == LikeStatus.LIKE
+                if (isLiked) {
+                    com.music.bitchord.data.spotify.LocalPlaylistStore.addSongToPlaylist("liked_songs", song)
+                } else {
+                    com.music.bitchord.data.spotify.LocalPlaylistStore.removeSongFromPlaylist("liked_songs", song.videoId)
+                }
+                if (com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.isLoggedIn) {
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        try {
+                            com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.toggleFavorite(
+                                trackId = song.videoId,
+                                title = song.title,
+                                artist = song.artist,
+                                durationSeconds = 0L,
+                                artworkUrl = song.thumbnailUrl.orEmpty(),
+                            )
+                        } catch (_: Exception) {}
+                    }
+                }
+            },
             // The service owns both the queue and the Shuffle state. Keeping
             // the toggle on that side prevents the UI from changing the icon
             // before its asynchronous reorder command has actually landed.
@@ -2522,6 +2557,10 @@ private fun BitChordApp(
                 // for the page to be read at all.
                 dismissPlayer()
                 navigator.pushAll(AppRoute.Settings, AppRoute.ListenTogether)
+            },
+            onOpenEqualizer = {
+                dismissPlayer()
+                navigator.push(AppRoute.Equalizer)
             },
             onClearQueue = {
                 // Keep what's playing and context/autoplay; drop user-queued tracks.
@@ -2806,6 +2845,7 @@ private fun BitChordApp(
                                 },
                                 contentPadding = listPadding,
                                 onEditServer = { editingPartyServer = true },
+                                onOpenEqualizer = { navigator.push(AppRoute.Equalizer) },
                             )
                         } else if (pageRoute == AppRoute.Equalizer) {
                             EqualizerScreen(contentPadding = listPadding)
@@ -2833,6 +2873,10 @@ private fun BitChordApp(
                                 onMessageClick = { navigator.push(AppRoute.Chat(it)) },
                                 onJamClick = { navigator.push(AppRoute.ListenTogether) },
                                 onPlayTrack = { song -> play(listOf(song), 0) },
+                                onOpenPlaylist = { id, name ->
+                                    val browseId = if (id.startsWith("local:playlist:") || id.startsWith("sp_local_")) id else "local:playlist:$id"
+                                    viewModel.openDetail(browseId, name, "", null, BrowseType.PLAYLIST)
+                                },
                                 contentPadding = listPadding,
                             )
                         } else if (pageRoute == AppRoute.Settings) {
@@ -3370,7 +3414,8 @@ private fun BitChordApp(
                                 pullState = libraryPull,
                                 contentPadding = listPadding,
                                 links = libraryLinks(),
-                                deviceItems = libraryDeviceItems(downloadedReleases) + localPlaylistItems,
+                                deviceItems = libraryDeviceItems(downloadedReleases),
+                                localPlaylists = localPlaylistItems,
                             )
                         }
                     }
@@ -3735,6 +3780,27 @@ private fun BitChordApp(
                                         Icon(
                                             Icons.Rounded.MoreHoriz,
                                             contentDescription = stringResource(R.string.more),
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            val cleanId = detail.browseId.removePrefix("VL").removePrefix("local:playlist:")
+                                            val url = if (detail.type == BrowseType.PLAYLIST) {
+                                                "https://www.tunesly.online/playlist/$cleanId"
+                                            } else {
+                                                "https://www.tunesly.online/browse/$cleanId"
+                                            }
+                                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, "🎶 Listen to \"${detail.title}\" on Tunesly:\n$url")
+                                            }
+                                            context.startActivity(Intent.createChooser(sendIntent, detail.title))
+                                        },
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Share,
+                                            contentDescription = stringResource(R.string.share),
                                             tint = MaterialTheme.colorScheme.onSurface,
                                         )
                                     }
@@ -4278,7 +4344,28 @@ private fun BitChordApp(
                     },
                 // The sheet stays up for a rating: it shows the new state
                 // in place, and people often thumb a song and then queue it.
-                onToggleLike = { viewModel.toggleLike(song.videoId) },
+                onToggleLike = {
+                viewModel.toggleLike(song.videoId)
+                val isLiked = viewModel.likeStatusOf(song.videoId) == LikeStatus.LIKE
+                if (isLiked) {
+                    com.music.bitchord.data.spotify.LocalPlaylistStore.addSongToPlaylist("liked_songs", song)
+                } else {
+                    com.music.bitchord.data.spotify.LocalPlaylistStore.removeSongFromPlaylist("liked_songs", song.videoId)
+                }
+                if (com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.isLoggedIn) {
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        try {
+                            com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.toggleFavorite(
+                                trackId = song.videoId,
+                                title = song.title,
+                                artist = song.artist,
+                                durationSeconds = 0L,
+                                artworkUrl = song.thumbnailUrl.orEmpty(),
+                            )
+                        } catch (_: Exception) {}
+                    }
+                }
+            },
                 onToggleDislike = {
                     val previousStatus = viewModel.toggleDislike(song.videoId)
                     if (
@@ -4663,13 +4750,14 @@ private fun BitChordApp(
                 // channel link, not a release, and nobody asked for it)
                 // and off anything with no real browse id behind it.
                 onShare = target.browseId
-                    ?.takeIf { remote && (target.type == BrowseType.ALBUM || target.type == BrowseType.PLAYLIST) }
+                    ?.takeIf { target.type == BrowseType.ALBUM || target.type == BrowseType.PLAYLIST }
                     ?.let { id ->
                         {
+                            val cleanId = id.removePrefix("VL").removePrefix("local:playlist:")
                             val url = if (target.type == BrowseType.PLAYLIST) {
-                                "https://music.youtube.com/playlist?list=${id.removePrefix("VL")}"
+                                "https://www.tunesly.online/playlist/$cleanId"
                             } else {
-                                "https://music.youtube.com/browse/$id"
+                                "https://www.tunesly.online/browse/$cleanId"
                             }
                             val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"

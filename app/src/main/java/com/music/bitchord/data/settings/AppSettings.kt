@@ -1,4 +1,4 @@
-﻿package com.music.bitchord.data.settings
+package com.music.bitchord.data.settings
 
 import com.music.bitchord.data.webdav.update
 import android.content.Context
@@ -659,6 +659,7 @@ object AppSettings {
     val tuneslyToken = MutableStateFlow("")
     val tuneslyUsername = MutableStateFlow("")
     val tuneslyEmail = MutableStateFlow("")
+    val tuneslyAvatar = MutableStateFlow("")
     val tuneslySyncEnabled = MutableStateFlow(true)
 
     // ── Discord Rich Presence ───────────────────────────────────────────
@@ -798,6 +799,7 @@ object AppSettings {
         prefs = context.getSharedPreferences("bitchord_settings", Context.MODE_PRIVATE)
         this.authStore = authStore
         com.music.bitchord.data.spotify.LocalPlaylistStore.init(context)
+        com.music.bitchord.data.LocalHistoryStore.init(context)
         readAll()
         watchConnection(context)
     }
@@ -942,6 +944,7 @@ object AppSettings {
         tuneslyToken.value = prefs.getString(KEY_TUNESLY_TOKEN, "").orEmpty()
         tuneslyUsername.value = prefs.getString(KEY_TUNESLY_USERNAME, "").orEmpty()
         tuneslyEmail.value = prefs.getString(KEY_TUNESLY_EMAIL, "").orEmpty()
+        tuneslyAvatar.value = prefs.getString(KEY_TUNESLY_AVATAR, "").orEmpty()
         tuneslySyncEnabled.value = prefs.getBoolean(KEY_TUNESLY_SYNC_ENABLED, true)
         replayGenres.value = prefs.getBoolean(KEY_REPLAY_GENRES, true)
         filterNonMusicAudio.value = prefs.getBoolean(KEY_FILTER_NON_MUSIC_AUDIO, true)
@@ -1631,6 +1634,11 @@ object AppSettings {
         prefs.edit().putString(KEY_TUNESLY_USERNAME, username).apply()
     }
 
+    fun setTuneslyAvatar(avatar: String) {
+        tuneslyAvatar.value = avatar
+        prefs.edit().putString(KEY_TUNESLY_AVATAR, avatar).apply()
+    }
+
     fun setTuneslySyncEnabled(enabled: Boolean) {
         tuneslySyncEnabled.value = enabled
         prefs.edit().putBoolean(KEY_TUNESLY_SYNC_ENABLED, enabled).apply()
@@ -2199,6 +2207,7 @@ object AppSettings {
     private const val KEY_TUNESLY_TOKEN = "tunesly_cloud_token"
     private const val KEY_TUNESLY_USERNAME = "tunesly_cloud_username"
     private const val KEY_TUNESLY_EMAIL = "tunesly_cloud_email"
+    private const val KEY_TUNESLY_AVATAR = "tunesly_cloud_avatar"
     private const val KEY_TUNESLY_SYNC_ENABLED = "tunesly_cloud_sync_enabled"
 
     private const val KEY_DISCORD_USERNAME = "discord_username"

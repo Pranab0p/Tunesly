@@ -213,6 +213,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
+                    android:host="www.tunesly.online"
+                    android:pathPattern="/invite/......" />
+                <data
+                    android:scheme="https"
+                    android:host="tunesly.online"
+                    android:pathPattern="/invite/......" />
+                <data
+                    android:scheme="https"
                     android:host="bitchord.kushagrasingh.in"
                     android:pathPattern="/invite/......" />
             </intent-filter>

@@ -16,10 +16,12 @@ data class ParsedJamInvite(
 /** Relays a BitChord web or scheme invite from [com.music.bitchord.MainActivity] to Compose. */
 object JamInviteLink {
 
-    const val ORIGIN = "https://bitchord.kushagrasingh.in"
+    const val ORIGIN = "https://www.tunesly.online"
 
     private const val EXTRA_CONSUMED = "bitchord.jamInviteConsumed"
-    private const val HOST = "bitchord.kushagrasingh.in"
+    private const val HOST = "www.tunesly.online"
+    private const val APEX_HOST = "tunesly.online"
+    private const val LEGACY_HOST = "bitchord.kushagrasingh.in"
     private const val CUSTOM_SCHEME = "bitchord"
     private const val CUSTOM_HOST = "party"
 
@@ -50,7 +52,7 @@ object JamInviteLink {
     /**
      * Parses an incoming invite:
      * 1. bitchord://party/<CODE>?server=<SERVER>
-     * 2. https://bitchord.kushagrasingh.in/invite/<CODE>?server=<SERVER>
+     * 2. https://tunesly.online/invite/<CODE>?server=<SERVER>
      */
     fun parseInvite(value: String?): ParsedJamInvite? {
         val uri = runCatching { URI(value ?: return null) }.getOrNull() ?: return null
@@ -67,8 +69,8 @@ object JamInviteLink {
             return ParsedJamInvite(code = code, serverUrl = server)
         }
 
-        // 2. Official web domain: https://bitchord.kushagrasingh.in/invite/<CODE>
-        if (scheme == "https" && host == HOST) {
+        // 2. Official web domain: https://tunesly.online/invite/<CODE>
+        if (scheme == "https" && (host == HOST || host == APEX_HOST || host == LEGACY_HOST)) {
             val match = INVITE_PATH.matchEntire(uri.path.orEmpty()) ?: return null
             val code = match.groupValues[1].uppercase()
             return ParsedJamInvite(code = code, serverUrl = server)

@@ -1,6 +1,8 @@
 package com.music.bitchord.data.tuneslycloud
 
 import com.music.bitchord.data.Http
+import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.spotify.LocalPlaylist
 import com.music.bitchord.data.settings.AppSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,6 +47,8 @@ data class TuneslyPublicProfile(
     val followingCount: Int = 0,
     val isFollowing: Boolean = false,
     val isMe: Boolean = false,
+    val isOnline: Boolean = false,
+    val lastActive: String = "",
     val topArtists: List<String> = emptyList(),
     val recentTracks: List<TuneslyCloudTrack> = emptyList(),
     val playlists: List<TuneslyPublicPlaylist> = emptyList(),
@@ -518,6 +522,62 @@ object TuneslyCloudManager {
         )
     }
 
+    suspend fun getFollowers(username: String): Result<List<TuneslyUserSummary>> = withContext(Dispatchers.IO) {
+        val clean = username.trim()
+        executeRequest(
+            "/users/$clean/followers",
+            builder = { url -> Request.Builder().url(url).get().build() },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val arr = resJson.optJSONArray("users") ?: JSONArray()
+                    val list = mutableListOf<TuneslyUserSummary>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        list.add(
+                            TuneslyUserSummary(
+                                id = obj.optString("_id"),
+                                username = obj.optString("username"),
+                                avatar = obj.optString("avatar"),
+                                bio = obj.optString("bio"),
+                            )
+                        )
+                    }
+                    Result.success(list)
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to load followers")))
+                }
+            },
+        )
+    }
+
+    suspend fun getFollowing(username: String): Result<List<TuneslyUserSummary>> = withContext(Dispatchers.IO) {
+        val clean = username.trim()
+        executeRequest(
+            "/users/$clean/following",
+            builder = { url -> Request.Builder().url(url).get().build() },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val arr = resJson.optJSONArray("users") ?: JSONArray()
+                    val list = mutableListOf<TuneslyUserSummary>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        list.add(
+                            TuneslyUserSummary(
+                                id = obj.optString("_id"),
+                                username = obj.optString("username"),
+                                avatar = obj.optString("avatar"),
+                                bio = obj.optString("bio"),
+                            )
+                        )
+                    }
+                    Result.success(list)
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to load following")))
+                }
+            },
+        )
+    }
+
     suspend fun updateProfile(
         displayName: String? = null,
         newUsername: String? = null,
@@ -546,8 +606,12 @@ object TuneslyCloudManager {
                     val userObj = resJson.optJSONObject("user")
                     val updatedUsername = userObj?.optString("username").orEmpty()
                     val updatedDisplayName = userObj?.optString("displayName").orEmpty()
+                    val updatedAvatar = userObj?.optString("avatar").orEmpty()
                     if (updatedUsername.isNotBlank()) {
                         AppSettings.setTuneslyUsername(updatedUsername)
+                    }
+                    if (updatedAvatar.isNotBlank()) {
+                        AppSettings.setTuneslyAvatar(updatedAvatar)
                     }
                     Result.success(Pair(updatedUsername, updatedDisplayName))
                 } else {
@@ -608,6 +672,8 @@ object TuneslyCloudManager {
                             followingCount = p.optInt("followingCount", 0),
                             isFollowing = p.optBoolean("isFollowing", false),
                             isMe = p.optBoolean("isMe", false),
+                            isOnline = p.optBoolean("isOnline", false),
+                            lastActive = p.optString("lastActive", ""),
                             topArtists = artists,
                             recentTracks = recent,
                             playlists = playlists,
@@ -797,4 +863,215 @@ object TuneslyCloudManager {
             },
         )
     }
+
+    suspend fun fetchHistory(limit: Int = 50): Result<List<Song>> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Not logged in"))
+        executeRequest(
+            "/history?limit=$limit",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .get()
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val arr = resJson.optJSONArray("history") ?: org.json.JSONArray()
+                    val list = mutableListOf<Song>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val trackId = obj.optString("trackId")
+                        if (trackId.isNotBlank()) {
+                            list.add(
+                                Song(
+                                    videoId = trackId,
+                                    title = obj.optString("title", "Unknown"),
+                                    artist = obj.optString("artist", "Unknown"),
+                                    thumbnailUrl = obj.optString("artworkUrl").takeIf { it.isNotBlank() },
+                                    durationText = null,
+                                )
+                            )
+                        }
+                    }
+                    Result.success(list)
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to fetch history")))
+                }
+            },
+        )
+    }
+
+    suspend fun fetchFavorites(): Result<List<Song>> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Not logged in"))
+        executeRequest(
+            "/library/favorites",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .get()
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val arr = resJson.optJSONArray("favorites") ?: org.json.JSONArray()
+                    val list = mutableListOf<Song>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val trackId = obj.optString("trackId")
+                        if (trackId.isNotBlank()) {
+                            list.add(
+                                Song(
+                                    videoId = trackId,
+                                    title = obj.optString("title", "Unknown"),
+                                    artist = obj.optString("artist", "Unknown"),
+                                    thumbnailUrl = obj.optString("artworkUrl").takeIf { it.isNotBlank() },
+                                    durationText = null,
+                                )
+                            )
+                        }
+                    }
+                    Result.success(list)
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to fetch favorites")))
+                }
+            },
+        )
+    }
+
+    suspend fun fetchPlaylists(): Result<List<LocalPlaylist>> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Not logged in"))
+        executeRequest(
+            "/playlists",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .get()
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val arr = resJson.optJSONArray("playlists") ?: org.json.JSONArray()
+                    val list = mutableListOf<LocalPlaylist>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val id = obj.optString("_id", "")
+                        val name = obj.optString("name", "Untitled")
+                        val tracksArr = obj.optJSONArray("tracks") ?: org.json.JSONArray()
+                        val songs = mutableListOf<Song>()
+                        for (j in 0 until tracksArr.length()) {
+                            val tObj = tracksArr.getJSONObject(j)
+                            val tId = tObj.optString("trackId", "")
+                            if (tId.isNotBlank()) {
+                                songs.add(
+                                    Song(
+                                        videoId = tId,
+                                        title = tObj.optString("title", "Unknown"),
+                                        artist = tObj.optString("artist", "Unknown"),
+                                        thumbnailUrl = tObj.optString("artworkUrl").takeIf { it.isNotBlank() },
+                                    )
+                                )
+                            }
+                        }
+                        if (id.isNotBlank()) {
+                            list.add(LocalPlaylist(id = id, title = name, songs = songs))
+                        }
+                    }
+                    Result.success(list)
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to fetch playlists")))
+                }
+            },
+        )
+    }
+
+    suspend fun createCloudPlaylist(name: String, tracks: List<Song> = emptyList()): Result<String> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Not logged in"))
+        val json = JSONObject().apply {
+            put("name", name.trim())
+            val tArr = org.json.JSONArray()
+            for (s in tracks) {
+                tArr.put(JSONObject().apply {
+                    put("trackId", s.videoId)
+                    put("title", s.title)
+                    put("artist", s.artist)
+                    put("artworkUrl", s.thumbnailUrl ?: "")
+                })
+            }
+            put("tracks", tArr)
+        }
+        executeRequest(
+            "/playlists",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .post(json.toString().toRequestBody(JSON_MEDIA))
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val pObj = resJson.optJSONObject("playlist")
+                    val id = pObj?.optString("_id").orEmpty()
+                    Result.success(id)
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to create cloud playlist")))
+                }
+            },
+        )
+    }
+
+    suspend fun addTrackToCloudPlaylist(playlistId: String, song: Song): Result<Boolean> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Not logged in"))
+        val json = JSONObject().apply {
+            put("trackId", song.videoId)
+            put("title", song.title)
+            put("artist", song.artist)
+            put("artworkUrl", song.thumbnailUrl ?: "")
+        }
+        executeRequest(
+            "/playlists/$playlistId/tracks",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .post(json.toString().toRequestBody(JSON_MEDIA))
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    Result.success(true)
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to add track to cloud playlist")))
+                }
+            },
+        )
+    }
+    suspend fun sendHeartbeat(): Boolean = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext false
+        try {
+            executeRequest(
+                "/users/heartbeat",
+                builder = { url ->
+                    Request.Builder()
+                        .url(url)
+                        .addHeader("Authorization", "Bearer $token")
+                        .post("{}".toRequestBody(JSON_MEDIA))
+                        .build()
+                },
+                parser = { resp, _ -> Result.success(resp.isSuccessful) }
+            ).getOrDefault(false)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
 }

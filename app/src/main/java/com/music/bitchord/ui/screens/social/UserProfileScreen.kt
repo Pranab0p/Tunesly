@@ -8,7 +8,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -102,6 +104,7 @@ fun UserProfileScreen(
     onMessageClick: (String) -> Unit,
     onJamClick: (String) -> Unit,
     onPlayTrack: (Song) -> Unit,
+    onOpenPlaylist: (id: String, name: String) -> Unit = { _, _ -> },
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     var currentUsername by remember(username) { mutableStateOf(username) }
@@ -116,6 +119,10 @@ fun UserProfileScreen(
     // Edit Profile Modal State
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
+    // Followers / Following Modal State
+    var showUserListModal by remember { mutableStateOf(false) }
+    var userListType by remember { mutableStateOf("Followers") }
+
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -123,6 +130,7 @@ fun UserProfileScreen(
     LaunchedEffect(currentUsername) {
         loading = true
         error = null
+        scope.launch { TuneslyCloudManager.sendHeartbeat() }
         TuneslyCloudManager.getUserProfile(currentUsername).fold(
             onSuccess = { prof ->
                 profileState = prof
@@ -217,8 +225,20 @@ fun UserProfileScreen(
 
             IconButton(
                 onClick = {
-                    clipboardManager.setText(AnnotatedString("@${profile.username}"))
-                    Toast.makeText(context, "Copied @${profile.username} to clipboard", Toast.LENGTH_SHORT).show()
+                    val shareUrl = "https://www.tunesly.online/user/@${profile.username}"
+                    val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(
+                            android.content.Intent.EXTRA_TEXT,
+                            "Check out ${profile.displayName.ifBlank { profile.username }}'s profile on Tunesly: $shareUrl"
+                        )
+                    }
+                    try {
+                        context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Profile"))
+                    } catch (e: Exception) {
+                        clipboardManager.setText(AnnotatedString(shareUrl))
+                        Toast.makeText(context, "Link copied to clipboard: $shareUrl", Toast.LENGTH_SHORT).show()
+                    }
                 }
             ) {
                 Icon(
@@ -230,6 +250,26 @@ fun UserProfileScreen(
         }
 
         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
+
+        val displayPlaylists = remember(profile.playlists, profile.isMe) {
+            if (profile.isMe) {
+                val local = com.music.bitchord.data.spotify.LocalPlaylistStore.playlists.value
+                    .filterNot { it.id == "liked_songs" }
+                    .map { lp ->
+                        TuneslyPublicPlaylist(
+                            id = lp.id,
+                            name = lp.title,
+                            description = "",
+                            trackCount = lp.songs.size,
+                            artworkUrl = lp.songs.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl.orEmpty(),
+                        )
+                    }
+                val existingIds = profile.playlists.map { it.id }.toSet()
+                profile.playlists + local.filterNot { existingIds.contains(it.id) }
+            } else {
+                profile.playlists
+            }
+        }
 
         // --- 2. Main Profile Content ---
         LazyColumn(
@@ -249,7 +289,11 @@ fun UserProfileScreen(
                         modifier = Modifier.padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        // User Avatar (DP) with optional Edit badge
+                        val (isUserOnline, statusText) = remember(profile.isOnline, profile.lastActive) {
+                            formatOnlineStatus(profile.isOnline, profile.lastActive)
+                        }
+
+                        // User Avatar (DP) with optional Edit badge / Online badge
                         Box(
                             contentAlignment = Alignment.BottomEnd,
                         ) {
@@ -257,25 +301,16 @@ fun UserProfileScreen(
                                 modifier = Modifier
                                     .size(96.dp)
                                     .clip(CircleShape)
-                                    .border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .border(2.5.dp, if (isUserOnline) Color(0xFF10B981) else MaterialTheme.colorScheme.primary, CircleShape)
                                     .background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                if (profile.avatar.isNotBlank()) {
-                                    AsyncImage(
-                                        model = profile.avatar,
-                                        contentDescription = profile.username,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                } else {
-                                    Text(
-                                        text = (profile.displayName.ifBlank { profile.username }).take(1).uppercase(),
-                                        fontSize = 38.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
+                                TuneslyAvatarView(
+                                    avatar = profile.avatar,
+                                    displayName = profile.displayName,
+                                    username = profile.username,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             }
 
                             if (profile.isMe) {
@@ -292,6 +327,21 @@ fun UserProfileScreen(
                                         contentDescription = "Change DP",
                                         tint = MaterialTheme.colorScheme.onPrimary,
                                         modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .padding(2.5.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(CircleShape)
+                                            .background(if (isUserOnline) Color(0xFF10B981) else Color(0xFF9E9E9E))
                                     )
                                 }
                             }
@@ -322,6 +372,33 @@ fun UserProfileScreen(
                             fontWeight = FontWeight.Medium,
                         )
 
+                        // Online / Last Seen Status Pill
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isUserOnline) Color(0xFF10B981).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(top = 6.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(
+                                            color = if (isUserOnline) Color(0xFF10B981) else Color(0xFF9E9E9E),
+                                            shape = CircleShape,
+                                        )
+                                )
+                                Text(
+                                    text = statusText,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = if (isUserOnline) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+
                         // Bio
                         if (profile.bio.isNotBlank()) {
                             Spacer(Modifier.height(8.dp))
@@ -348,10 +425,18 @@ fun UserProfileScreen(
                             TuneslyStatPill(
                                 count = "$followersCount",
                                 label = "Followers",
+                                onClick = {
+                                    userListType = "Followers"
+                                    showUserListModal = true
+                                },
                             )
                             TuneslyStatPill(
                                 count = "${profile.followingCount}",
                                 label = "Following",
+                                onClick = {
+                                    userListType = "Following"
+                                    showUserListModal = true
+                                },
                             )
                             TuneslyStatPill(
                                 count = "${profile.recentTracks.size}",
@@ -514,9 +599,9 @@ fun UserProfileScreen(
                 }
             }
 
-            // Tab 1: Playlists
+            // Tab 1: Playlists (Both user's personal/local & cloud public playlists)
             if (selectedTab == 1) {
-                if (profile.playlists.isEmpty()) {
+                if (displayPlaylists.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -532,8 +617,13 @@ fun UserProfileScreen(
                         }
                     }
                 } else {
-                    items(profile.playlists) { playlist ->
-                        TuneslyPlaylistRow(playlist = playlist)
+                    items(displayPlaylists) { playlist ->
+                        TuneslyPlaylistRow(
+                            playlist = playlist,
+                            onClick = {
+                                onOpenPlaylist(playlist.id, playlist.name)
+                            }
+                        )
                     }
                 }
             }
@@ -653,6 +743,17 @@ fun UserProfileScreen(
             },
         )
     }
+
+    if (showUserListModal) {
+        UserListModal(
+            title = userListType,
+            username = profile.username,
+            onDismiss = { showUserListModal = false },
+            onOpenProfile = { clickedUsername ->
+                currentUsername = clickedUsername
+            },
+        )
+    }
 }
 
 // Modal for editing DP, Name, Username, and Bio
@@ -739,21 +840,13 @@ private fun EditProfileModal(
                                 .background(MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center,
                         ) {
-                            if (editAvatar.isNotBlank()) {
-                                AsyncImage(
-                                    model = editAvatar,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            } else {
-                                Text(
-                                    text = editDisplayName.take(1).uppercase().ifBlank { "T" },
-                                    fontSize = 34.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
+                            TuneslyAvatarView(
+                                avatar = editAvatar,
+                                displayName = editDisplayName,
+                                username = editUsername,
+                                modifier = Modifier.fillMaxSize(),
+                                textSize = 34.sp,
+                            )
                         }
 
                         Spacer(Modifier.height(8.dp))
@@ -879,8 +972,22 @@ private fun EditProfileModal(
 
 // Tunesly Stat Pill
 @Composable
-private fun TuneslyStatPill(count: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun TuneslyStatPill(
+    count: String,
+    label: String,
+    onClick: (() -> Unit)? = null,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = if (onClick != null) {
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onClick() }
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        } else {
+            Modifier
+        },
+    ) {
         Text(
             text = count,
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -892,6 +999,184 @@ private fun TuneslyStatPill(count: String, label: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+@Composable
+private fun UserListModal(
+    title: String,
+    username: String,
+    onDismiss: () -> Unit,
+    onOpenProfile: (String) -> Unit,
+) {
+    var users by remember { mutableStateOf<List<com.music.bitchord.data.tuneslycloud.TuneslyUserSummary>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    LaunchedEffect(title, username) {
+        loading = true
+        error = null
+        val res = if (title == "Followers") {
+            TuneslyCloudManager.getFollowers(username)
+        } else {
+            TuneslyCloudManager.getFollowing(username)
+        }
+        res.fold(
+            onSuccess = {
+                users = it
+                loading = false
+            },
+            onFailure = {
+                error = it.message ?: "Failed to load $title"
+                loading = false
+            },
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            )
+        },
+        text = {
+            Box(modifier = Modifier.fillMaxWidth().height(360.dp)) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                } else if (error != null) {
+                    Text(
+                        text = error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.align(Alignment.Center),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else if (users.isEmpty()) {
+                    Text(
+                        text = if (title == "Followers") "No followers yet" else "Not following anyone yet",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.Center),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(users, key = { it.username }) { user ->
+                            var userFollowing by remember { mutableStateOf(false) }
+                            var followBusy by remember { mutableStateOf(false) }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .clickable {
+                                        onDismiss()
+                                        onOpenProfile(user.username)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                // Avatar
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    TuneslyAvatarView(
+                                        avatar = user.avatar,
+                                        displayName = user.username,
+                                        username = user.username,
+                                        modifier = Modifier.fillMaxSize(),
+                                        textSize = 16.sp,
+                                    )
+                                }
+
+                                Spacer(Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "@${user.username}",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    if (user.bio.isNotBlank()) {
+                                        Text(
+                                            text = user.bio,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.width(8.dp))
+
+                                // Follow / Unfollow toggle button
+                                OutlinedButton(
+                                    onClick = {
+                                        if (followBusy) return@OutlinedButton
+                                        followBusy = true
+                                        scope.launch {
+                                            if (userFollowing) {
+                                                TuneslyCloudManager.unfollowUser(user.username).fold(
+                                                    onSuccess = {
+                                                        userFollowing = false
+                                                        followBusy = false
+                                                    },
+                                                    onFailure = {
+                                                        followBusy = false
+                                                        Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                                                    },
+                                                )
+                                            } else {
+                                                TuneslyCloudManager.followUser(user.username).fold(
+                                                    onSuccess = {
+                                                        userFollowing = true
+                                                        followBusy = false
+                                                    },
+                                                    onFailure = {
+                                                        followBusy = false
+                                                        Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                                                    },
+                                                )
+                                            }
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                ) {
+                                    if (followBusy) {
+                                        CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                                    } else {
+                                        Text(
+                                            text = if (userFollowing) "Following" else "Follow",
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        },
+    )
 }
 
 // Tunesly Track Row
@@ -968,13 +1253,17 @@ private fun TuneslyTrackRow(
 
 // Tunesly Playlist Row
 @Composable
-private fun TuneslyPlaylistRow(playlist: TuneslyPublicPlaylist) {
+private fun TuneslyPlaylistRow(
+    playlist: TuneslyPublicPlaylist,
+    onClick: () -> Unit = {},
+) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 5.dp),
+            .padding(horizontal = 16.dp, vertical = 5.dp)
+            .clickable(onClick = onClick),
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -1020,5 +1309,95 @@ private fun TuneslyPlaylistRow(playlist: TuneslyPublicPlaylist) {
                 )
             }
         }
+    }
+}
+
+
+@Composable
+fun TuneslyAvatarView(
+    avatar: String,
+    displayName: String,
+    username: String,
+    modifier: Modifier = Modifier,
+    textSize: androidx.compose.ui.unit.TextUnit = 38.sp,
+) {
+    val bitmap = remember(avatar) {
+        if (avatar.startsWith("data:image") && avatar.contains(",")) {
+            try {
+                val base64 = avatar.substringAfter(",")
+                val bytes = Base64.decode(base64, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            bitmap != null -> {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = displayName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            avatar.isNotBlank() -> {
+                AsyncImage(
+                    model = avatar,
+                    contentDescription = displayName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            else -> {
+                Text(
+                    text = (displayName.ifBlank { username }).take(1).uppercase().ifBlank { "U" },
+                    fontSize = textSize,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+fun formatOnlineStatus(isOnline: Boolean, lastActiveIso: String): Pair<Boolean, String> {
+    if (isOnline) {
+        return Pair(true, "Online")
+    }
+    if (lastActiveIso.isBlank()) {
+        return Pair(false, "Offline")
+    }
+    return try {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        val cleanIso = if (lastActiveIso.contains(".")) lastActiveIso.substringBefore(".") else lastActiveIso.removeSuffix("Z")
+        val date = sdf.parse(cleanIso)
+        if (date != null) {
+            val diffMs = System.currentTimeMillis() - date.time
+            val diffMins = diffMs / (60 * 1000)
+            val diffHours = diffMs / (60 * 60 * 1000)
+            val diffDays = diffMs / (24 * 60 * 60 * 1000)
+            when {
+                diffMins < 5 -> Pair(true, "Online")
+                diffMins < 60 -> Pair(false, "Active ${diffMins}m ago")
+                diffHours < 24 -> Pair(false, "Active ${diffHours}h ago")
+                diffDays == 1L -> Pair(false, "Active yesterday")
+                diffDays < 7 -> Pair(false, "Active ${diffDays}d ago")
+                else -> Pair(false, "Offline")
+            }
+        } else {
+            Pair(false, "Offline")
+        }
+    } catch (_: Exception) {
+        Pair(false, "Offline")
     }
 }

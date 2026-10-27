@@ -64,7 +64,16 @@ fun HistoryScreen(
 
             is UiState.Success -> {
                 val songs = state.data
-                val isCurrentRow = playingRowMatcher(songs, currentSong)
+                if (songs.isEmpty()) {
+                    item(key = "history:empty") {
+                        MessageState(
+                            message = stringResource(R.string.history_empty),
+                            actionLabel = null,
+                            onAction = null,
+                        )
+                    }
+                } else {
+                    val isCurrentRow = playingRowMatcher(songs, currentSong)
                 // The videoId alone is not a key here: the feed is deduplicated
                 // on it, but a list keyed on something that could repeat is one
                 // bad response away from a crash. The index makes it total.
@@ -86,6 +95,7 @@ fun HistoryScreen(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                         )
                     }
+                }
                 }
             }
         }

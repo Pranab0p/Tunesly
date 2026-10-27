@@ -741,6 +741,7 @@ fun NowPlayingScreen(
      * width comfortably clears a phone's landscape width.
      */
     windowHeight: Dp,
+    onOpenEqualizer: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -1530,6 +1531,7 @@ fun NowPlayingScreen(
                 onDismiss = { showAudioOutput = false },
                 onOpenPipeline = { showAudioPipeline = true },
                 onOpenCast = { showCast = true },
+                onOpenEqualizer = onOpenEqualizer?.let { action -> { showAudioOutput = false; action() } },
             )
         }
         if (showLyricsProviders) {

@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -43,8 +47,8 @@ import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 
 /** UIAlertController's own metrics: fixed narrow width, 14pt corner, 44pt rows. */
-internal val ALERT_WIDTH = 270.dp
-internal val ALERT_CORNER = 14.dp
+internal val ALERT_WIDTH = 315.dp
+internal val ALERT_CORNER = 18.dp
 internal val ACTION_HEIGHT = 44.dp
 
 /**
@@ -221,20 +225,11 @@ fun UpdateAvailableDialog(
                     )
                     Box(
                         modifier = Modifier
-                            .padding(top = 4.dp)
+                            .padding(top = 8.dp)
                             .heightIn(max = NOTES_MAX_HEIGHT)
                             .verticalScroll(rememberScrollState()),
                     ) {
-                        // RichText's Material3 Text leans on LocalContentColor,
-                        // which nothing here provides — this card is a plain
-                        // Column.background(...), not a Surface, so without
-                        // this the notes render at LocalContentColor's black
-                        // default regardless of theme.
-                        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-                            RichText(style = RichTextStyle.Default) {
-                                Markdown(notes)
-                            }
-                        }
+                        WhatsNewContent(notes = notes)
                     }
                 }
             }
@@ -321,4 +316,66 @@ internal fun AlertRule(modifier: Modifier = Modifier) {
             .height(0.5.dp)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)),
     )
+}
+
+
+@Composable
+private fun WhatsNewContent(notes: String) {
+    val lines = remember(notes) {
+        notes.lines()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        lines.forEach { line ->
+            val isHeading = line.startsWith("#") || line.endsWith(":") || 
+                (!line.contains("•") && !line.startsWith("-") && line.contains("Update Available"))
+            if (isHeading) {
+                Text(
+                    text = line.removePrefix("#").trim(),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                )
+            } else {
+                val cleanLine = line
+                    .removePrefix("•")
+                    .removePrefix("-")
+                    .removePrefix("*")
+                    .trim()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .size(6.dp)
+                            .background(MaterialTheme.colorScheme.primary, shape = CircleShape),
+                    )
+                    Text(
+                        text = cleanLine,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            fontWeight = FontWeight.Normal,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
 }

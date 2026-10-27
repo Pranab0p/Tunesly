@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.runtime.Composable
@@ -54,6 +56,18 @@ fun libraryLinks(): List<LibraryLink> {
         icon = icon,
     )
     return listOfNotNull(
+        link(
+            stringResource(R.string.history),
+            stringResource(R.string.listening_history),
+            "app:history",
+            Icons.Rounded.History,
+        ),
+        link(
+            "Liked Songs",
+            "Favorite songs",
+            "app:liked",
+            Icons.Rounded.Favorite,
+        ),
         link(
             stringResource(R.string.downloads),
             stringResource(R.string.downloaded_songs),

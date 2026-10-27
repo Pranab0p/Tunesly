@@ -116,6 +116,7 @@ fun LibraryScreen(
     deviceItems: List<ShelfItem>,
     /** The big "Library" heading; the desktop's pages carry none. */
     showTitle: Boolean = true,
+    localPlaylists: List<ShelfItem> = emptyList(),
 ) {
     val pinnedPlaylists by AppUi.host.pinnedPlaylists.collectAsStateWithLifecycle()
     val onDevice = stringResource(Res.string.on_device)
@@ -157,21 +158,17 @@ fun LibraryScreen(
             }
             if (!signedIn) {
                 item(key = "shelf:$PLAYLISTS") {
-                    val emptyPlaylists = HomeShelf(PLAYLISTS, emptyList())
+                    val currentPlaylists = HomeShelf(PLAYLISTS, localPlaylists)
+                    val pinnedFirst = currentPlaylists.pinnedFirst(pinnedPlaylists)
                     PlaylistShelf(
-                        shelf = emptyPlaylists,
+                        shelf = pinnedFirst,
                         onItemClick = onShelfItemClick,
                         onItemLongPress = onShelfItemLongPress,
                         onNewPlaylist = onNewPlaylist,
                         onImportSpotifyPlaylist = onImportSpotifyPlaylist,
-                        onShowAll = { onShowAll(emptyPlaylists) },
-                    )
-                }
-                item {
-                    MessageState(
-                        message = stringResource(Res.string.library_sign_in_description),
-                        actionLabel = stringResource(Res.string.sign_in),
-                        onAction = onSignIn,
+                        onShowAll = { onShowAll(pinnedFirst) },
+                        pinnedPlaylists = pinnedPlaylists,
+                        signedIn = false,
                     )
                 }
                 return@LazyColumn
@@ -189,7 +186,7 @@ fun LibraryScreen(
                     val shelves = state.data.shelves
                     if (shelves.none { it.title == PLAYLISTS }) {
                         item(key = "shelf:$PLAYLISTS") {
-                            val emptyPlaylists = HomeShelf(PLAYLISTS, emptyList())
+                            val emptyPlaylists = HomeShelf(PLAYLISTS, localPlaylists)
                             PlaylistShelf(
                                 shelf = emptyPlaylists,
                                 onItemClick = onShelfItemClick,
@@ -197,13 +194,16 @@ fun LibraryScreen(
                                 onNewPlaylist = onNewPlaylist,
                                 onImportSpotifyPlaylist = onImportSpotifyPlaylist,
                                 onShowAll = { onShowAll(emptyPlaylists) },
+                                signedIn = true,
                             )
                         }
                     }
                     shelves.forEach { shelf ->
                         item(key = "shelf:${shelf.title}") {
                             if (shelf.title == PLAYLISTS) {
-                                val pinnedFirst = shelf.pinnedFirst(pinnedPlaylists)
+                                val combinedItems = localPlaylists + shelf.items.filterNot { item -> localPlaylists.any { it.browseId == item.browseId } }
+                                val combinedShelf = shelf.copy(items = combinedItems)
+                                val pinnedFirst = combinedShelf.pinnedFirst(pinnedPlaylists)
                                 PlaylistShelf(
                                     shelf = pinnedFirst,
                                     onItemClick = onShelfItemClick,
@@ -212,6 +212,7 @@ fun LibraryScreen(
                                     onImportSpotifyPlaylist = onImportSpotifyPlaylist,
                                     onShowAll = { onShowAll(pinnedFirst) },
                                     pinnedPlaylists = pinnedPlaylists,
+                                    signedIn = true,
                                 )
                             } else {
                                 LibraryGridShelf(
@@ -311,6 +312,7 @@ private fun PlaylistShelf(
     onImportSpotifyPlaylist: (() -> Unit)? = null,
     onShowAll: () -> Unit,
     pinnedPlaylists: List<String> = emptyList(),
+    signedIn: Boolean = true,
 ) {
     LibraryGridShelf(
         shelf = shelf,
@@ -323,7 +325,7 @@ private fun PlaylistShelf(
                 NewShelfCard(
                     icon = BitChordIcons.Plus,
                     label = stringResource(Res.string.new_playlist),
-                    subtitle = stringResource(Res.string.saved_to_youtube_music),
+                    subtitle = if (signedIn) stringResource(Res.string.saved_to_youtube_music) else "Saved on this device",
                     onClick = onNewPlaylist,
                 )
                 if (onImportSpotifyPlaylist != null) {

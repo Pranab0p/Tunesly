@@ -1,10 +1,10 @@
 /**
- * Party invites (JamInviteLink.kt): `https://bitchord.kushagrasingh.in/invite/<CODE>`,
+ * Party invites (JamInviteLink.kt): `https://www.tunesly.online/invite/<CODE>`,
  * optionally `?server=<custom server>`, and `bitchord://party/<CODE>`. On the
  * web the first is a route of this app (`/invite/:code`).
  */
 
-export const INVITE_ORIGIN = 'https://bitchord.kushagrasingh.in';
+export const INVITE_ORIGIN = 'https://www.tunesly.online';
 export const CODE_LENGTH = 6;
 
 /** Letters and digits only, upper case; null unless it's six of them. */

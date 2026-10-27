@@ -1,4 +1,4 @@
-﻿package com.music.bitchord.playback
+package com.music.bitchord.playback
 
 import android.app.PendingIntent
 import android.content.Context
@@ -907,6 +907,7 @@ class PlaybackService : MediaLibraryService() {
             // transition — a track started from idle or resumed from pause
             // otherwise stays silent on the site.
             if (isPlaying && song != null) {
+                com.music.bitchord.data.LocalHistoryStore.recordSong(song)
                 if (listenBrainzSong?.videoId != song.videoId || listenBrainzStartMs == 0L) {
                     listenBrainzSong = song
                     listenBrainzStartMs = System.currentTimeMillis()
@@ -3541,6 +3542,7 @@ class PlaybackService : MediaLibraryService() {
         if (newSong != null && exoPlayer.isPlaying) {
             submitListenBrainzPlayingNow(newSong, 0L, durationMs)
             com.music.bitchord.data.taste.UserTasteProfile.recordPlay(newSong)
+            com.music.bitchord.data.LocalHistoryStore.recordSong(newSong)
         }
 
         // The renderer is still configured for the track that just ended at
