@@ -46,8 +46,7 @@ object AppUpdateChecker {
 
     private val UPDATE_ENDPOINTS = listOf(
         "https://tunesly.online/api/app/version",
-        "https://vibestudio.blog/tunesly/api/app/version",
-        "http://194.127.179.229:5050/api/app/version",
+                "http://194.127.179.229:5050/api/app/version",
     )
 
     private const val GITHUB_RELEASE_URL =
@@ -96,7 +95,7 @@ object AppUpdateChecker {
                         } else {
                             defaultApk
                         }
-                        val relUrl = obj["releaseUrl"]?.jsonPrimitive?.contentOrNull ?: "https://vibestudio.blog/tunesly"
+                        val relUrl = obj["releaseUrl"]?.jsonPrimitive?.contentOrNull ?: "https://tunesly.online"
                         val notes = obj["notes"]?.jsonPrimitive?.contentOrNull
                         if (ver != null && isNewer(ver, BuildConfig.VERSION_NAME)) {
                             _available.value = UpdateInfo(ver, relUrl, apk, notes)
