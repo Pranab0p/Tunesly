@@ -1054,6 +1054,88 @@ object TuneslyCloudManager {
             },
         )
     }
+    suspend fun getPublicPlaylist(playlistId: String): Result<LocalPlaylist> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        executeRequest(
+            "/playlists/$playlistId",
+            builder = { url ->
+                val b = Request.Builder().url(url).get()
+                if (token.isNotBlank()) b.addHeader("Authorization", "Bearer $token")
+                b.build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val pObj = resJson.optJSONObject("playlist") ?: org.json.JSONObject()
+                    val id = pObj.optString("_id", playlistId)
+                    val name = pObj.optString("name", "Untitled")
+                    val tracksArr = pObj.optJSONArray("tracks") ?: org.json.JSONArray()
+                    val songs = mutableListOf<Song>()
+                    for (j in 0 until tracksArr.length()) {
+                        val tObj = tracksArr.getJSONObject(j)
+                        val tId = tObj.optString("trackId", "")
+                        if (tId.isNotBlank()) {
+                            songs.add(
+                                Song(
+                                    videoId = tId,
+                                    title = tObj.optString("title", "Unknown"),
+                                    artist = tObj.optString("artist", "Unknown"),
+                                    thumbnailUrl = tObj.optString("artworkUrl").takeIf { it.isNotBlank() },
+                                )
+                            )
+                        }
+                    }
+                    Result.success(LocalPlaylist(id = id, title = name, songs = songs))
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Playlist not found")))
+                }
+            }
+        )
+    }
+
+    suspend fun cloneCloudPlaylist(playlistId: String): Result<LocalPlaylist> = withContext(Dispatchers.IO) {
+        val token = AppSettings.tuneslyToken.value
+        if (token.isBlank()) return@withContext Result.failure(Exception("Please sign in to save playlists"))
+        executeRequest(
+            "/playlists/$playlistId/clone",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $token")
+                    .post("{}".toRequestBody(JSON_MEDIA))
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val pObj = resJson.optJSONObject("playlist") ?: org.json.JSONObject()
+                    val id = pObj.optString("_id", playlistId)
+                    val name = pObj.optString("name", "Untitled")
+                    val tracksArr = pObj.optJSONArray("tracks") ?: org.json.JSONArray()
+                    val songs = mutableListOf<Song>()
+                    for (j in 0 until tracksArr.length()) {
+                        val tObj = tracksArr.getJSONObject(j)
+                        val tId = tObj.optString("trackId", "")
+                        if (tId.isNotBlank()) {
+                            songs.add(
+                                Song(
+                                    videoId = tId,
+                                    title = tObj.optString("title", "Unknown"),
+                                    artist = tObj.optString("artist", "Unknown"),
+                                    thumbnailUrl = tObj.optString("artworkUrl").takeIf { it.isNotBlank() },
+                                )
+                            )
+                        }
+                    }
+                    val cloned = LocalPlaylist(id = id, title = name, songs = songs)
+                    // Persist to local store so it appears immediately in user's Library
+                    com.music.bitchord.data.spotify.LocalPlaylistStore.savePlaylist(name, songs)
+                    Result.success(cloned)
+                } else {
+                    Result.failure(Exception(resJson.optString("error", "Failed to save playlist")))
+                }
+            }
+        )
+    }
+
     suspend fun sendHeartbeat(): Boolean = withContext(Dispatchers.IO) {
         val token = AppSettings.tuneslyToken.value
         if (token.isBlank()) return@withContext false

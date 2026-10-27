@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Message
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Check
@@ -271,6 +272,10 @@ fun UserProfileScreen(
             }
         }
 
+        val displayRecentTracks = remember(profile.recentTracks) {
+            profile.recentTracks.distinctBy { it.trackId.ifBlank { "${it.title} ${it.artist}" } }
+        }
+
         // --- 2. Main Profile Content ---
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -439,7 +444,7 @@ fun UserProfileScreen(
                                 },
                             )
                             TuneslyStatPill(
-                                count = "${profile.recentTracks.size}",
+                                count = "${displayRecentTracks.size}",
                                 label = "Tracks",
                             )
                         }
@@ -563,7 +568,7 @@ fun UserProfileScreen(
 
             // Tab 0: Recent Songs List
             if (selectedTab == 0) {
-                if (profile.recentTracks.isEmpty()) {
+                if (displayRecentTracks.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -579,7 +584,7 @@ fun UserProfileScreen(
                         }
                     }
                 } else {
-                    items(profile.recentTracks) { track ->
+                    items(displayRecentTracks) { track ->
                         TuneslyTrackRow(
                             track = track,
                             onPlay = {
@@ -620,6 +625,22 @@ fun UserProfileScreen(
                     items(displayPlaylists) { playlist ->
                         TuneslyPlaylistRow(
                             playlist = playlist,
+                            isMe = profile.isMe,
+                            onSaveToLibrary = if (!profile.isMe) {
+                                {
+                                    scope.launch {
+                                        val res = com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.cloneCloudPlaylist(playlist.id)
+                                        res.fold(
+                                            onSuccess = {
+                                                Toast.makeText(context, "Playlist '${playlist.name}' added to your library! 🎉", Toast.LENGTH_SHORT).show()
+                                            },
+                                            onFailure = { err ->
+                                                Toast.makeText(context, err.message ?: "Failed to save playlist", Toast.LENGTH_SHORT).show()
+                                            }
+                                        )
+                                    }
+                                }
+                            } else null,
                             onClick = {
                                 onOpenPlaylist(playlist.id, playlist.name)
                             }
@@ -1255,6 +1276,8 @@ private fun TuneslyTrackRow(
 @Composable
 private fun TuneslyPlaylistRow(
     playlist: TuneslyPublicPlaylist,
+    isMe: Boolean = true,
+    onSaveToLibrary: (() -> Unit)? = null,
     onClick: () -> Unit = {},
 ) {
     Surface(
@@ -1298,15 +1321,44 @@ private fun TuneslyPlaylistRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = playlist.name,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.height(3.dp))
                 Text(
                     text = "${playlist.trackCount} tracks",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.7f),
                 )
+            }
+
+            if (!isMe && onSaveToLibrary != null) {
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                    modifier = Modifier.clickable { onSaveToLibrary() },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                            contentDescription = "Save Playlist",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Save",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
             }
         }
     }

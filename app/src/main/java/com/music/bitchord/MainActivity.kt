@@ -2874,8 +2874,24 @@ private fun BitChordApp(
                                 onJamClick = { navigator.push(AppRoute.ListenTogether) },
                                 onPlayTrack = { song -> play(listOf(song), 0) },
                                 onOpenPlaylist = { id, name ->
-                                    val browseId = if (id.startsWith("local:playlist:") || id.startsWith("sp_local_")) id else "local:playlist:$id"
-                                    viewModel.openDetail(browseId, name, "", null, BrowseType.PLAYLIST)
+                                    val existing = com.music.bitchord.data.spotify.LocalPlaylistStore.getPlaylist(id)
+                                        ?: com.music.bitchord.data.spotify.LocalPlaylistStore.getPlaylist("local:playlist:$id")
+                                    if (existing != null) {
+                                        viewModel.openDetail("local:playlist:${existing.id}", existing.title, "", null, BrowseType.PLAYLIST)
+                                    } else {
+                                        scope.launch {
+                                            com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.getPublicPlaylist(id).fold(
+                                                onSuccess = { fetched ->
+                                                    val saved = com.music.bitchord.data.spotify.LocalPlaylistStore.savePlaylist(fetched.title, fetched.songs)
+                                                    viewModel.openDetail("local:playlist:${saved.id}", saved.title, "", null, BrowseType.PLAYLIST)
+                                                },
+                                                onFailure = {
+                                                    val browseId = if (id.startsWith("local:playlist:") || id.startsWith("sp_local_")) id else "local:playlist:$id"
+                                                    viewModel.openDetail(browseId, name, "", null, BrowseType.PLAYLIST)
+                                                }
+                                            )
+                                        }
+                                    }
                                 },
                                 contentPadding = listPadding,
                             )
