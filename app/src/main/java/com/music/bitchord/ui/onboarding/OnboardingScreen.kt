@@ -413,18 +413,18 @@ private fun AuthStepView(
                 Box(contentAlignment = Alignment.Center) {
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
-                            .scale(1.3f)
+                            .size(36.dp)
+                            .scale(1.25f)
                             .clip(CircleShape)
                             .graphicsLayer {
-                                alpha = logoGlowAlpha * 0.45f
+                                alpha = logoGlowAlpha * 0.20f
                             }
                             .background(Color(0xFFFF174F)),
                     )
                     Image(
                         painter = painterResource(Res.drawable.ic_logo),
                         contentDescription = "Tunesly Logo",
-                        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)),
+                        modifier = Modifier.size(36.dp),
                     )
                 }
                 Spacer(Modifier.width(12.dp))
