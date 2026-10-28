@@ -147,6 +147,50 @@ object UserTasteProfile {
             .map { it.key }
             .filter { it.isNotBlank() && !it.equals("Unknown Artist", ignoreCase = true) }
 
+    fun getEffectivePersonalArtists(): List<String> {
+        val top = getTopArtists(10)
+        val followed = runCatching { com.music.bitchord.data.settings.AppSettings.followedArtists.value }
+            .getOrDefault(emptySet())
+            .toList()
+            .filter { it.isNotBlank() }
+        val combined = (top + followed).distinct()
+        if (combined.isNotEmpty()) return combined
+
+        val langs = getEffectivePreferredLanguages()
+        val langFallbacks = mutableListOf<String>()
+        if (langs.any { it.equals("English", ignoreCase = true) }) {
+            langFallbacks.addAll(listOf("The Weeknd", "Taylor Swift", "Drake", "Ed Sheeran", "Billie Eilish"))
+        }
+        if (langs.any { it.equals("Punjabi", ignoreCase = true) }) {
+            langFallbacks.addAll(listOf("Sidhu Moose Wala", "Diljit Dosanjh", "Karan Aujla", "AP Dhillon"))
+        }
+        if (langs.any { it.equals("Hindi", ignoreCase = true) }) {
+            langFallbacks.addAll(listOf("Arijit Singh", "Pritam", "Atif Aslam", "Mohit Chauhan"))
+        }
+        if (langs.any { it.equals("Telugu", ignoreCase = true) }) {
+            langFallbacks.addAll(listOf("Sid Sriram", "Anirudh Ravichander", "Devi Sri Prasad"))
+        }
+        if (langs.any { it.equals("Tamil", ignoreCase = true) }) {
+            langFallbacks.addAll(listOf("Anirudh Ravichander", "A.R. Rahman", "Yuvan Shankar Raja"))
+        }
+        if (langs.any { it.equals("Bhojpuri", ignoreCase = true) }) {
+            langFallbacks.addAll(listOf("Pawan Singh", "Khesari Lal Yadav", "Shilpi Raj"))
+        }
+        if (langs.any { it.equals("Korean", ignoreCase = true) || it.equals("K-Pop", ignoreCase = true) }) {
+            langFallbacks.addAll(listOf("BTS", "BLACKPINK", "NewJeans", "Stray Kids"))
+        }
+        return if (langFallbacks.isNotEmpty()) langFallbacks.distinct() else listOf("Arijit Singh", "The Weeknd", "Diljit Dosanjh")
+    }
+
+    fun getEffectivePreferredLanguages(): Set<String> {
+        val selected = runCatching { com.music.bitchord.data.settings.AppSettings.preferredMusicLanguages.value }
+            .getOrDefault(emptySet())
+            .filter { it.isNotBlank() }
+            .toSet()
+        if (selected.isNotEmpty()) return selected
+        return setOf("Hindi", "English")
+    }
+
     fun recordSkip(videoId: String, artist: String) {
         if (videoId.isNotBlank()) {
             inMemorySkippedTracks[videoId] = System.currentTimeMillis()
