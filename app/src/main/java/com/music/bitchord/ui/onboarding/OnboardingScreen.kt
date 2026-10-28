@@ -413,18 +413,18 @@ private fun AuthStepView(
                 Box(contentAlignment = Alignment.Center) {
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
-                            .scale(1.2f)
+                            .size(46.dp)
+                            .scale(1.3f)
                             .clip(CircleShape)
                             .graphicsLayer {
-                                alpha = logoGlowAlpha * 0.20f
+                                alpha = logoGlowAlpha * 0.45f
                             }
-                            .background(Color.White),
+                            .background(Color(0xFFFF174F)),
                     )
                     Image(
                         painter = painterResource(Res.drawable.ic_logo),
                         contentDescription = "Tunesly Logo",
-                        modifier = Modifier.size(38.dp),
+                        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)),
                     )
                 }
                 Spacer(Modifier.width(12.dp))
@@ -1624,6 +1624,31 @@ private fun AnimatedPillButton(
                 color = if (primary) Color.Black else Color.White,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
+            )
+        }
+    }
+}
+
+
+@androidx.compose.ui.tooling.preview.Preview(
+    name = "Login Screen",
+    showBackground = true,
+    backgroundColor = 0xFF000000,
+    device = "id:pixel_7",
+)
+@Composable
+fun LoginScreenPreview() {
+    com.music.bitchord.ui.theme.BitChordTheme(darkTheme = true) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            AuthStepView(
+                initialName = "",
+                onNameChosen = {},
+                onSignIn = {},
+                onProceedToArtists = {},
             )
         }
     }
