@@ -230,6 +230,56 @@ object TuneslyCloudManager {
             )
         }
 
+    suspend fun syncGoogleAccount(
+        email: String,
+        displayName: String = "",
+        avatar: String = "",
+        googleId: String = "",
+    ): Result<TuneslyUser> = withContext(Dispatchers.IO) {
+        if (email.isBlank()) return@withContext Result.failure(Exception("Email cannot be blank"))
+        val json = JSONObject().apply {
+            put("email", email.trim())
+            put("displayName", displayName.trim())
+            put("avatar", avatar.trim())
+            put("googleId", googleId.trim())
+        }
+        executeRequest(
+            "/auth/google-sync",
+            builder = { url ->
+                Request.Builder()
+                    .url(url)
+                    .post(json.toString().toRequestBody(JSON_MEDIA))
+                    .build()
+            },
+            parser = { resp, resJson ->
+                if (resp.isSuccessful && resJson.optBoolean("success")) {
+                    val token = resJson.getString("token")
+                    val userObj = resJson.getJSONObject("user")
+                    val user = TuneslyUser(
+                        id = userObj.optString("_id"),
+                        username = userObj.optString("username"),
+                        email = userObj.optString("email"),
+                        totalPlayTimeSeconds = userObj.optLong("totalPlayTimeSeconds", 0),
+                    )
+                    AppSettings.setTuneslyAccount(token, user.username, user.email)
+                    val uAvatar = userObj.optString("avatar", "")
+                    if (uAvatar.isNotBlank()) {
+                        AppSettings.setTuneslyAvatar(uAvatar)
+                    }
+                    if (!user.username.equals("pranab", ignoreCase = true)) {
+                        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                            try { followUser("pranab") } catch (_: Exception) {}
+                        }
+                    }
+                    Result.success(user)
+                } else {
+                    val err = resJson.optString("error", "Google sync failed (${resp.code})")
+                    Result.failure(Exception(err))
+                }
+            },
+        )
+    }
+
     fun logout() {
         AppSettings.clearTuneslyAccount()
     }

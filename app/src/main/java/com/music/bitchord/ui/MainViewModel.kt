@@ -1620,6 +1620,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _googleAccounts.value = authStore.sessions
                 }
             }
+            if (account != null && account.email.isNotBlank() && !com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.isLoggedIn) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.syncGoogleAccount(
+                            email = account.email,
+                            displayName = account.name,
+                            avatar = account.thumbnailUrl.orEmpty(),
+                            googleId = "",
+                        )
+                    } catch (_: Exception) {}
+                }
+            }
         }
     }
 
@@ -3719,6 +3731,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (wasSignedIn) clearListenerState()
             reloadForAccount()
             loadChannels(force = true)
+            if (account.email.isNotBlank()) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        com.music.bitchord.data.tuneslycloud.TuneslyCloudManager.syncGoogleAccount(
+                            email = account.email,
+                            displayName = account.name,
+                            avatar = account.thumbnailUrl.orEmpty(),
+                            googleId = session.authUser.orEmpty(),
+                        )
+                    } catch (_: Exception) {}
+                }
+            }
             onComplete(true)
         }
     }
