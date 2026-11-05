@@ -1246,6 +1246,15 @@
     <string name="room_preset_hall">Concert Hall</string>
     <string name="room_preset_cathedral">Cathedral</string>
     <string name="room_wet_depth">Acoustic Depth (Wet Mix)</string>
+    <!-- Vocal Remover & Karaoke -->
+    <string name="vocal_remover_title">Vocal Remover &amp; Karaoke</string>
+    <string name="vocal_remover_subtitle">Cut vocals for karaoke or isolate vocals (acapella)</string>
+    <string name="vocal_remover_footer">Real-time 32-bit Float DSP processor removes center lead vocals while preserving bass, drums, and stereo backing track.</string>
+    <string name="vocal_mode_karaoke">Karaoke (Vocals Off)</string>
+    <string name="vocal_mode_acapella">Acapella (Vocals Only)</string>
+    <string name="vocal_cut_depth">Vocal Cut Depth</string>
+    <string name="vocal_isolation_depth">Vocal Isolation Depth</string>
+
     <!-- Tunesly Auth Onboarding -->
     <string name="onboarding_auth_welcome_title">Welcome to Tunesly</string>
     <string name="onboarding_auth_welcome_subtitle">Log in or create an account to sync playlists, chat &amp; listen with friends</string>

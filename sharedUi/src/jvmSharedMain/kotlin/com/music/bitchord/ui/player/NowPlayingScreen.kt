@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.constrain
 import androidx.compose.ui.unit.Constraints
 import com.music.bitchord.playback.PlaybackPosition
+import com.music.bitchord.playback.VocalMode
 import com.music.bitchord.sharedui.resources.*
 
 import androidx.compose.ui.graphics.ImageBitmap
@@ -38,6 +39,7 @@ import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -791,6 +793,7 @@ fun NowPlayingScreen(
     val openListenTogetherMembers: () -> Unit = { showListenTogetherMembers = true }
 
     val syncedLyricsEnabled by PlayerSettings.syncedLyrics.collectAsStateWithLifecycle()
+    val vocalMode by PlayerSettings.vocalMode.collectAsStateWithLifecycle()
     val lyricsOffsetMs by PlayerSettings.lyricsOffsetMs.collectAsStateWithLifecycle()
     // A lambda, not a value: read by the lyric strip and panel in scopes of
     // their own, so a tick recomposes them and not the player around them.
@@ -1989,12 +1992,29 @@ fun NowPlayingScreen(
                                 )
                             },
                             translationToggle = {
-                                TranslationToggleButton(
-                                    state = lyricsTranslation.translationState,
-                                    showingTranslation = lyricsTranslation.showingTranslation,
-                                    enabled = !lyrics.isNullOrEmpty(),
-                                    onClick = lyricsTranslation.toggleTranslation,
-                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    KaraokeToggleButton(
+                                        vocalMode = vocalMode,
+                                        enabled = !lyrics.isNullOrEmpty(),
+                                        onClick = {
+                                            val nextMode = if (vocalMode == VocalMode.OFF) VocalMode.KARAOKE else VocalMode.OFF
+                                            PlayerSettings.setVocalMode(nextMode)
+                                            PlayerPlatform.host.showMessage(
+                                                if (nextMode == VocalMode.KARAOKE) "🎤 Karaoke: Vocals Off"
+                                                else "🎵 Normal: Vocals On"
+                                            )
+                                        },
+                                    )
+                                    TranslationToggleButton(
+                                        state = lyricsTranslation.translationState,
+                                        showingTranslation = lyricsTranslation.showingTranslation,
+                                        enabled = !lyrics.isNullOrEmpty(),
+                                        onClick = lyricsTranslation.toggleTranslation,
+                                    )
+                                }
                             },
                         ) { panelModifier ->
                             LyricsTranslationMotion(
@@ -3412,14 +3432,29 @@ fun NowPlayingScreen(
                                         .align(Alignment.BottomEnd)
                                         .graphicsLayer { alpha = translateFade },
                                 ) {
-                                    TranslationToggleButton(
-                                        state = lyricsTranslation.translationState,
-                                        showingTranslation = lyricsTranslation.showingTranslation,
-                                        // Not tappable on the way out: a disc at 20%
-                                        // opacity is on its way to gone, not a target.
-                                        enabled = translateShown && !lyrics.isNullOrEmpty(),
-                                        onClick = lyricsTranslation.toggleTranslation,
-                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        KaraokeToggleButton(
+                                            vocalMode = vocalMode,
+                                            enabled = translateShown && !lyrics.isNullOrEmpty(),
+                                            onClick = {
+                                                val nextMode = if (vocalMode == VocalMode.OFF) VocalMode.KARAOKE else VocalMode.OFF
+                                                PlayerSettings.setVocalMode(nextMode)
+                                                PlayerPlatform.host.showMessage(
+                                                    if (nextMode == VocalMode.KARAOKE) "🎤 Karaoke: Vocals Off"
+                                                    else "🎵 Normal: Vocals On"
+                                                )
+                                            },
+                                        )
+                                        TranslationToggleButton(
+                                            state = lyricsTranslation.translationState,
+                                            showingTranslation = lyricsTranslation.showingTranslation,
+                                            enabled = translateShown && !lyrics.isNullOrEmpty(),
+                                            onClick = lyricsTranslation.toggleTranslation,
+                                        )
+                                    }
                                 }
                             }
                             // The bar arrives and leaves without a transition of its own:

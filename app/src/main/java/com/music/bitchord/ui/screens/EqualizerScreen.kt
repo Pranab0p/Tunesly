@@ -32,6 +32,10 @@ import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Waves
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import com.music.bitchord.playback.VocalMode
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -117,6 +121,8 @@ fun EqualizerScreen(
     val spatialAudio by AppSettings.spatialAudio.collectAsStateWithLifecycle()
     val loudnessNormalization by AppSettings.loudnessNormalization.collectAsStateWithLifecycle()
     val crossfade by AppSettings.crossfadeSeconds.collectAsStateWithLifecycle()
+    val vocalMode by AppSettings.vocalMode.collectAsStateWithLifecycle()
+    val vocalLevel by AppSettings.vocalLevel.collectAsStateWithLifecycle()
 
     val haptics = rememberHaptics()
     var pickingPreset by remember { mutableStateOf(false) }
@@ -415,6 +421,68 @@ fun EqualizerScreen(
                     },
                     valueRange = 0.05f..0.75f,
                     steps = 13,
+                )
+            }
+        }
+
+        SettingsGroup(
+            header = stringResource(R.string.vocal_remover_title),
+            footer = stringResource(R.string.vocal_remover_footer),
+        ) {
+            SettingsRow(
+                icon = Icons.Rounded.Mic,
+                title = stringResource(R.string.vocal_remover_title),
+                subtitle = stringResource(R.string.vocal_remover_subtitle),
+                trailing = {
+                    Switch(
+                        checked = vocalMode.isEnabled,
+                        onCheckedChange = {
+                            haptics.play(if (it) Haptic.ToggleOn else Haptic.ToggleOff)
+                            AppSettings.setVocalMode(if (it) VocalMode.KARAOKE else VocalMode.OFF)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = {
+                    val next = !vocalMode.isEnabled
+                    haptics.play(if (next) Haptic.ToggleOn else Haptic.ToggleOff)
+                    AppSettings.setVocalMode(if (next) VocalMode.KARAOKE else VocalMode.OFF)
+                },
+            )
+            if (vocalMode.isEnabled) {
+                RowDivider()
+                val modes = listOf(VocalMode.KARAOKE, VocalMode.ACAPELLA)
+                val modeLabels = listOf(
+                    stringResource(R.string.vocal_mode_karaoke),
+                    stringResource(R.string.vocal_mode_acapella),
+                )
+                val selectedIndex = modes.indexOf(vocalMode).coerceAtLeast(0)
+                SegmentedControl(
+                    options = modeLabels,
+                    selectedIndex = selectedIndex,
+                    onSelect = { index ->
+                        haptics.play(Haptic.Select)
+                        AppSettings.setVocalMode(modes[index])
+                    },
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+                )
+                RowDivider()
+                val isKaraoke = vocalMode == VocalMode.KARAOKE
+                val cutPercent = ((1f - vocalLevel) * 100f).roundToInt()
+                SliderRow(
+                    icon = if (isKaraoke) Icons.Rounded.MusicNote else Icons.Rounded.RecordVoiceOver,
+                    title = stringResource(if (isKaraoke) R.string.vocal_cut_depth else R.string.vocal_isolation_depth),
+                    value = "$cutPercent%",
+                    sliderValue = 1f - vocalLevel,
+                    onSliderValue = {
+                        val snapped = (it * 20f).roundToInt() / 20f
+                        AppSettings.setVocalLevel(1f - snapped)
+                    },
+                    valueRange = 0f..1f,
+                    steps = 19,
                 )
             }
         }

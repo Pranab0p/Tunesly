@@ -79,7 +79,11 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
         override val syncedLyrics get() = AppSettings.syncedLyrics
         override val translationLanguage get() = AppSettings.translationLanguage
         override val versionAlignmentInProgress get() = AppSettings.versionAlignmentInProgress
+        override val vocalMode get() = AppSettings.vocalMode
+        override val vocalLevel get() = AppSettings.vocalLevel
 
+        override fun setVocalMode(value: com.music.bitchord.playback.VocalMode) = AppSettings.setVocalMode(value)
+        override fun setVocalLevel(value: Float) = AppSettings.setVocalLevel(value)
         override fun setLastPlayerScreen(value: LastPlayerScreen) = AppSettings.setLastPlayerScreen(value)
         override fun setLyricsOffsetMs(value: Int) = AppSettings.setLyricsOffsetMs(value)
     }

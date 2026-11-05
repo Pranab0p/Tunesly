@@ -52,6 +52,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Mic
+import com.music.bitchord.playback.VocalMode
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -1534,6 +1536,48 @@ internal fun RomanizationToggleButton(
                 modifier = Modifier.size(19.dp),
             )
         }
+    }
+}
+
+/** Fast toggle for real-time DSP Karaoke / Vocal Remover. */
+@Composable
+internal fun KaraokeToggleButton(
+    vocalMode: VocalMode,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val active = vocalMode != VocalMode.OFF
+    val tint = when {
+        !enabled -> LocalPlayerTint.current.copy(alpha = 0.42f)
+        active -> Color(0xFFFF2D55)
+        else -> LocalPlayerTint.current.copy(alpha = 0.78f)
+    }
+    val discAlpha by animateFloatAsState(
+        targetValue = if (active) 0.38f else 0.18f,
+        label = "karaokeDisc",
+    )
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(
+                if (active) Color(0xFFFF2D55).copy(alpha = discAlpha)
+                else LocalPlayerTint.current.copy(alpha = discAlpha)
+            )
+            .clickable(
+                enabled = enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Mic,
+            contentDescription = "Karaoke (Vocals Off)",
+            tint = tint,
+            modifier = Modifier.size(19.dp),
+        )
     }
 }
 

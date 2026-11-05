@@ -587,6 +587,8 @@ class PlaybackService : MediaLibraryService() {
      * [spareFilter] are the *roles*, and they trade places at every handoff
      * along with the players. Everything downstream talks in roles.
      */
+    private val vocalAudioProcessorA = VocalAudioProcessor()
+    private val vocalAudioProcessorB = VocalAudioProcessor()
     private val reverbAudioProcessorA = ReverbAudioProcessor()
     private val reverbAudioProcessorB = ReverbAudioProcessor()
     private val spatialAudioProcessorA = SpatialAudioProcessor()
@@ -1176,7 +1178,9 @@ class PlaybackService : MediaLibraryService() {
             )
             activeTrackIsDolbyAtmos = NerdStats.isDolbyAtmosMime(format.sampleMimeType)
             applySpatialAudioEnabled()
+        applyVocalSettings()
         applyReverbSettings()
+        applyVocalSettings()
             publishNerdStats()
             currentAudioInputFormat = format
             applyOutputRoute()
@@ -1672,6 +1676,7 @@ class PlaybackService : MediaLibraryService() {
 
         configuredFloatOutput = shouldEnableFloatOutput()
         val exoPlayer = buildPlayer(
+            vocalAudioProcessorA,
             reverbAudioProcessorA,
             spatialAudioProcessorA,
             equalizerProcessorA,
@@ -1680,6 +1685,7 @@ class PlaybackService : MediaLibraryService() {
             ownsSession = true,
         )
         val sparePlayer = buildPlayer(
+            vocalAudioProcessorB,
             reverbAudioProcessorB,
             spatialAudioProcessorB,
             equalizerProcessorB,
@@ -3192,6 +3198,7 @@ class PlaybackService : MediaLibraryService() {
      * re-resolving a stream URL for audio that is already local.
      */
     private fun buildPlayer(
+        vocal: VocalAudioProcessor,
         reverb: ReverbAudioProcessor,
         spatial: SpatialAudioProcessor,
         equalizer: EqualizerProcessor,
@@ -3199,7 +3206,7 @@ class PlaybackService : MediaLibraryService() {
         loudness: LoudnessProcessor,
         ownsSession: Boolean,
     ): ExoPlayer = ExoPlayer.Builder(this)
-        .setRenderersFactory(silenceSkippingRenderers(reverb, spatial, equalizer, filter, loudness))
+        .setRenderersFactory(silenceSkippingRenderers(vocal, reverb, spatial, equalizer, filter, loudness))
         .setMediaSourceFactory(requireNotNull(mediaSourceFactory))
         .setLoadControl(farBufferingLoadControl())
         .setAudioAttributes(AUDIO_ATTRIBUTES, /* handleAudioFocus = */ ownsSession)
@@ -6217,6 +6224,7 @@ class PlaybackService : MediaLibraryService() {
      * `skipSilenceEnabled` keeps driving it as before.
      */
     private fun silenceSkippingRenderers(
+        vocal: VocalAudioProcessor,
         reverb: ReverbAudioProcessor,
         spatial: SpatialAudioProcessor,
         equalizer: EqualizerProcessor,
@@ -6332,7 +6340,7 @@ class PlaybackService : MediaLibraryService() {
             // them for the same reason: it belongs to the listener and
             // the whole session, while the transition filter belongs to
             // one handoff and has to have the last word on it.
-            val dspChain = DspChain(reverb, spatial, equalizer, transition, loudness)
+            val dspChain = DspChain(vocal, reverb, spatial, equalizer, transition, loudness)
             return PrecisionAudioSink(
                 delegate = defaultSink,
                 dspChain = dspChain,
@@ -6578,6 +6586,7 @@ class PlaybackService : MediaLibraryService() {
         activeFilter = transitionFilterA
         spareFilter = transitionFilterB
         val newActive = buildPlayer(
+            vocalAudioProcessorA,
             reverbAudioProcessorA,
             spatialAudioProcessorA,
             equalizerProcessorA,
@@ -6586,6 +6595,7 @@ class PlaybackService : MediaLibraryService() {
             ownsSession = true,
         )
         val newSpare = buildPlayer(
+            vocalAudioProcessorB,
             reverbAudioProcessorB,
             spatialAudioProcessorB,
             equalizerProcessorB,
@@ -6730,6 +6740,12 @@ class PlaybackService : MediaLibraryService() {
         }
         scope.launch {
             combine(
+                AppSettings.vocalMode,
+                AppSettings.vocalLevel,
+            ) { _, _ -> Unit }.collect { applyVocalSettings() }
+        }
+        scope.launch {
+            combine(
                 AppSettings.reverbEnabled,
                 AppSettings.reverbPreset,
                 AppSettings.reverbWet,
@@ -6809,6 +6825,15 @@ class PlaybackService : MediaLibraryService() {
         val enabled = AppSettings.spatialAudio.value && !activeTrackIsDolbyAtmos
         spatialAudioProcessorA.enabled = enabled
         spatialAudioProcessorB.enabled = enabled
+    }
+
+    private fun applyVocalSettings() {
+        val mode = AppSettings.vocalMode.value
+        val level = AppSettings.vocalLevel.value
+        vocalAudioProcessorA.mode = mode
+        vocalAudioProcessorA.vocalLevel = level
+        vocalAudioProcessorB.mode = mode
+        vocalAudioProcessorB.vocalLevel = level
     }
 
     private fun applyReverbSettings() {

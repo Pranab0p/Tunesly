@@ -15,6 +15,7 @@ import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
 import com.music.bitchord.playback.ReverbPreset
+import com.music.bitchord.playback.VocalMode
 import kotlinx.coroutines.flow.MutableStateFlow
 
 
@@ -345,6 +346,8 @@ object AppSettings {
     val reverbEnabled = MutableStateFlow(false)
     val reverbPreset = MutableStateFlow(ReverbPreset.SMALL_ROOM)
     val reverbWet = MutableStateFlow(0.24f)
+    val vocalMode = MutableStateFlow(VocalMode.OFF)
+    val vocalLevel = MutableStateFlow(0f)
     val themeMode = MutableStateFlow(ThemeMode.DARK)
 
     /** Keep playing similar music once the queue runs out. */
@@ -870,6 +873,10 @@ object AppSettings {
             reverbPreset.value = ReverbPreset.SMALL_ROOM
         }
         reverbWet.value = prefs.getFloat(KEY_REVERB_WET, reverbPreset.value.wetLevel)
+        vocalMode.value = runCatching {
+            VocalMode.valueOf(prefs.getString(KEY_VOCAL_MODE, null) ?: VocalMode.OFF.name)
+        }.getOrDefault(VocalMode.OFF)
+        vocalLevel.value = prefs.getFloat(KEY_VOCAL_LEVEL, 0f).coerceIn(0f, 1f)
         themeMode.value = runCatching {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
         }.getOrDefault(ThemeMode.DARK)
@@ -1266,6 +1273,17 @@ object AppSettings {
         val clamped = value.coerceIn(0f, 1f)
         reverbWet.value = clamped
         prefs.edit().putFloat(KEY_REVERB_WET, clamped).apply()
+    }
+
+    fun setVocalMode(value: VocalMode) {
+        vocalMode.value = value
+        prefs.edit().putString(KEY_VOCAL_MODE, value.name).apply()
+    }
+
+    fun setVocalLevel(value: Float) {
+        val clamped = value.coerceIn(0f, 1f)
+        vocalLevel.value = clamped
+        prefs.edit().putFloat(KEY_VOCAL_LEVEL, clamped).apply()
     }
 
     fun setShowNerdStats(value: Boolean) {
@@ -2129,7 +2147,9 @@ object AppSettings {
     private const val KEY_BASS_BOOST = "bass_boost_enabled"
     private const val KEY_REVERB_ENABLED = "reverb_enabled"
     private const val KEY_REVERB_PRESET = "reverb_preset"
-    private const val KEY_REVERB_WET = "reverb_wet" 
+    private const val KEY_REVERB_WET = "reverb_wet"
+    private const val KEY_VOCAL_MODE = "vocal_mode"
+    private const val KEY_VOCAL_LEVEL = "vocal_level"  
     private const val KEY_THEME = "theme_mode"
     private const val KEY_AUTOPLAY = "autoplay"
     private const val KEY_SHUFFLE_ENABLED = "shuffle_enabled"
