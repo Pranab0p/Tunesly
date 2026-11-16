@@ -69,6 +69,7 @@ import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -744,6 +745,7 @@ fun NowPlayingScreen(
      */
     windowHeight: Dp,
     onOpenEqualizer: (() -> Unit)? = null,
+    onStartRadio: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -1897,6 +1899,7 @@ fun NowPlayingScreen(
                                     showRevertCue = showRevertCue,
                                     onToggleLike = onToggleLike,
                                     onOpenMenu = onOpenMenu,
+                                    onStartRadio = onStartRadio,
                                     onOpenAlbum = onOpenAlbum,
                                     onOpenArtist = onOpenArtist,
                                 )
@@ -3304,6 +3307,15 @@ fun NowPlayingScreen(
                                     onClick = onToggleLike,
                                     active = liked,
                                     haptic = if (liked) Haptic.ToggleOff else Haptic.ToggleOn,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            if (onStartRadio != null && song.localUri == null) {
+                                CircleGlyph(
+                                    icon = Icons.Rounded.AutoAwesome,
+                                    contentDescription = "Song Radio (Similar Vibe)",
+                                    onClick = onStartRadio,
+                                    haptic = Haptic.Select,
                                 )
                                 Spacer(Modifier.width(8.dp))
                             }

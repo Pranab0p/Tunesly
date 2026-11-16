@@ -1518,11 +1518,12 @@ private fun BitChordApp(
                 .map { it.mediaId }
             scope.launch {
                 val seed = song.copy(
-                    radioName = song.title,
+                    radioName = "✨ ${song.title} Radio",
                     playbackSource = song.title,
                     playbackSourceType = PlaybackSourceType.SHARED_LINK,
                     playbackSourceId = song.videoId,
                 )
+                Toast.makeText(context, "✨ Starting Song Radio • Similar vibe for \"${song.title}\"", Toast.LENGTH_SHORT).show()
                 val related = loadAutoplayTracks(
                     existing = listOf(seed),
                     seedSong = seed,
@@ -2425,6 +2426,7 @@ private fun BitChordApp(
                     it.repeatMode = next
                 }
             },
+            onStartRadio = { startRadio(displayedSong) },
             onToggleAutoplay = {
                 // PlaybackService owns the setting and queue extension so
                 // this path and the notification use exactly one loader.

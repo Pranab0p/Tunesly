@@ -182,6 +182,62 @@ object UserTasteProfile {
         return if (langFallbacks.isNotEmpty()) langFallbacks.distinct() else listOf("Arijit Singh", "The Weeknd", "Diljit Dosanjh")
     }
 
+    data class NewReleaseQuery(
+        val shelfTitle: String,
+        val shelfSubtitle: String,
+        val query: String,
+    )
+
+    fun getPersonalNewReleaseQueries(): List<NewReleaseQuery> {
+        val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val personalArtists = getEffectivePersonalArtists()
+        val preferredLangs = getEffectivePreferredLanguages().toList()
+        val primaryArtist = personalArtists.getOrNull(0) ?: "Arijit Singh"
+        val secondaryArtist = personalArtists.getOrNull(1) ?: personalArtists.getOrNull(0) ?: "The Weeknd"
+        val primaryLang = preferredLangs.getOrNull(0) ?: "Hindi"
+        val secondaryLang = preferredLangs.getOrNull(1) ?: primaryLang
+
+        val queries = mutableListOf<NewReleaseQuery>()
+
+        queries.add(
+            NewReleaseQuery(
+                shelfTitle = "Fresh Drops For You",
+                shelfSubtitle = "Latest $year releases • $primaryArtist",
+                query = "$primaryArtist new song $year",
+            )
+        )
+
+        if (secondaryArtist != primaryArtist) {
+            queries.add(
+                NewReleaseQuery(
+                    shelfTitle = "Latest Drops • $secondaryArtist",
+                    shelfSubtitle = "Newly released music & tracks",
+                    query = "$secondaryArtist latest new release $year",
+                )
+            )
+        }
+
+        queries.add(
+            NewReleaseQuery(
+                shelfTitle = "New in $primaryLang",
+                shelfSubtitle = "Fresh drops & latest $year $primaryLang releases",
+                query = "New $primaryLang songs $year",
+            )
+        )
+
+        if (secondaryLang != primaryLang) {
+            queries.add(
+                NewReleaseQuery(
+                    shelfTitle = "New in $secondaryLang",
+                    shelfSubtitle = "Fresh drops & latest $year $secondaryLang releases",
+                    query = "New $secondaryLang songs $year",
+                )
+            )
+        }
+
+        return queries
+    }
+
     fun getEffectivePreferredLanguages(): Set<String> {
         val selected = runCatching { com.music.bitchord.data.settings.AppSettings.preferredMusicLanguages.value }
             .getOrDefault(emptySet())

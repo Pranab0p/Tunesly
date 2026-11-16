@@ -104,6 +104,7 @@ suspend fun loadAutoplayTracks(
 ): Result<List<Song>> {
     val seed = youtubeSeedFor(seedSong)
     val sessionVibe = com.music.bitchord.data.taste.UserTasteProfile.getActiveSessionVibe()
+    val songVibe = SongVibeAnalyzer.analyze(seedSong)
 
     val ytRelated = if (seed != null) {
         YtMusicRepository.radio(seed).getOrElse { emptyList() }
@@ -111,47 +112,74 @@ suspend fun loadAutoplayTracks(
         emptyList()
     }
 
-    // Filter out anti-fatigue tracks (skips within 2h + recent 40 history tracks)
-    val filteredYt = ytRelated.filterNot { sessionVibe.antiFatigueIds.contains(it.videoId) }
+    // Strictly filter YouTube radio tracks to match genre, tempo, language and anti-fatigue
+    val strictlyCohesiveYt = ytRelated.filter { candidate ->
+        !sessionVibe.antiFatigueIds.contains(candidate.videoId) &&
+        candidate.videoId != seedSong.videoId &&
+        SongVibeAnalyzer.isCohesive(candidate, songVibe)
+    }
 
-    var extra = QueueBuilder.extend(existing, filteredYt, limit)
+    var extra = QueueBuilder.extend(existing, strictlyCohesiveYt, limit)
 
-    // Top up with session vibe aligned songs if space remains
+    // Smart Vibe Search Top-Up (When YouTube radio is sparse or drifted)
     if (extra.size < limit) {
-        val searchSeed = if (sessionVibe.topArtists.isNotEmpty()) {
-            "${sessionVibe.topArtists.first()} ${sessionVibe.moodKeywords}"
-        } else {
-            "${seedSong.artist} ${sessionVibe.moodKeywords}"
-        }
-        val vibeFallback = YtMusicRepository.search(searchSeed, SearchFilter.SONGS)
-            .getOrNull().orEmpty()
-            .filterIsInstance<SearchResult.Track>()
-            .map { it.song }
-            .filterNot { sessionVibe.antiFatigueIds.contains(it.videoId) }
+        val vibeQueries = SongVibeAnalyzer.buildVibeSearchQueries(seedSong, songVibe)
+        for (q in vibeQueries) {
+            if (extra.size >= limit) break
+            val searchTracks = YtMusicRepository.search(q, SearchFilter.SONGS)
+                .getOrNull().orEmpty()
+                .filterIsInstance<SearchResult.Track>()
+                .map { it.song }
+                .filter { candidate ->
+                    !sessionVibe.antiFatigueIds.contains(candidate.videoId) &&
+                    candidate.videoId != seedSong.videoId &&
+                    SongVibeAnalyzer.isCohesive(candidate, songVibe)
+                }
 
-        if (vibeFallback.isNotEmpty()) {
-            val combined = filteredYt + vibeFallback
-            extra = QueueBuilder.extend(existing, combined, limit)
+            if (searchTracks.isNotEmpty()) {
+                extra = QueueBuilder.extend(existing, extra + searchTracks, limit)
+            }
         }
     }
 
-    // Artist top songs fallback if still not full
+    // Artist new & fresh releases top-up
     if (extra.size < limit) {
-        val artistFallback = YtMusicRepository.search("${seedSong.artist} top songs", SearchFilter.SONGS)
+        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val newSongsFallback = YtMusicRepository.search("${songVibe.primaryArtist} latest new song $currentYear", SearchFilter.SONGS)
             .getOrNull().orEmpty()
             .filterIsInstance<SearchResult.Track>()
             .map { it.song }
-            .filterNot { sessionVibe.antiFatigueIds.contains(it.videoId) }
+            .filter { candidate ->
+                !sessionVibe.antiFatigueIds.contains(candidate.videoId) &&
+                candidate.videoId != seedSong.videoId &&
+                SongVibeAnalyzer.isCohesive(candidate, songVibe)
+            }
+
+        if (newSongsFallback.isNotEmpty()) {
+            extra = QueueBuilder.extend(existing, extra + newSongsFallback, limit)
+        }
+    }
+
+    // Artist top cohesive tracks fallback if still not full
+    if (extra.size < limit) {
+        val artistFallback = YtMusicRepository.search("${songVibe.primaryArtist} top songs", SearchFilter.SONGS)
+            .getOrNull().orEmpty()
+            .filterIsInstance<SearchResult.Track>()
+            .map { it.song }
+            .filter { candidate ->
+                !sessionVibe.antiFatigueIds.contains(candidate.videoId) &&
+                candidate.videoId != seedSong.videoId &&
+                SongVibeAnalyzer.isCohesive(candidate, songVibe)
+            }
 
         if (artistFallback.isNotEmpty()) {
-            val combined = extra + artistFallback
-            extra = QueueBuilder.extend(existing, combined, limit)
+            extra = QueueBuilder.extend(existing, extra + artistFallback, limit)
         }
     }
 
     if (extra.isEmpty()) return Result.success(emptyList())
 
-    val dynamicRadioName = "${sessionVibe.moodTag} Flow"
+    val dynamicRadioName = "✨ ${songVibe.vibeLabel} • ${songVibe.primaryArtist}"
 
     return Result.success(extra.map {
         it.copy(

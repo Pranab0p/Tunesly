@@ -394,6 +394,7 @@ enum class SearchFilter(val label: String, val params: String?) {
 
 enum class HomeMood(val id: String, val label: String, val query: String) {
     ALL("all", "All", ""),
+    NEW_RELEASES("new_releases", "🔥 New Drops", "latest new songs releases 2026"),
     ROMANTIC("romantic", "Romantic", "Arijit Singh romantic love songs hits"),
     CHILL("chill", "Chill & Lofi", "Hindi Indie chill lofi songs Anuv Jain Prateek Kuhad"),
     PARTY("party", "Party & Dance", "Karan Aujla Shubh Diljit Punjabi party dance hits"),

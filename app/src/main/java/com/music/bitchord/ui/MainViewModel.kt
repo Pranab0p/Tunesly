@@ -1764,6 +1764,80 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val moodShelves = mutableListOf<HomeShelf>()
 
+            if (mood == HomeMood.NEW_RELEASES) {
+                try {
+                    val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                    val personalArtists = com.music.bitchord.data.taste.UserTasteProfile.getEffectivePersonalArtists()
+                    val preferredLangs = com.music.bitchord.data.taste.UserTasteProfile.getEffectivePreferredLanguages().toList()
+                    val primaryArtist = personalArtists.getOrNull(0) ?: "Arijit Singh"
+                    val primaryLang = preferredLangs.getOrNull(0) ?: "Hindi"
+
+                    val officialJob = async {
+                        YtMusicRepository.homeSupplement("FEmusic_new_releases").getOrNull().orEmpty()
+                    }
+                    val freshArtistJob = async {
+                        YtMusicRepository.search("$primaryArtist new song $year", SearchFilter.SONGS).getOrNull().orEmpty()
+                    }
+                    val freshLangJob = async {
+                        YtMusicRepository.search("New $primaryLang songs $year", SearchFilter.SONGS).getOrNull().orEmpty()
+                    }
+
+                    val officialShelves = officialJob.await()
+                    val freshArtistSongs = freshArtistJob.await()
+                    val freshLangSongs = freshLangJob.await()
+
+                    val artistItems = freshArtistSongs.filterIsInstance<SearchResult.Track>().map { tr ->
+                        ShelfItem(
+                            title = tr.song.title,
+                            subtitle = tr.song.artist,
+                            thumbnailUrl = tr.song.thumbnailUrl,
+                            videoId = tr.song.videoId,
+                            browseId = null,
+                        )
+                    }
+                    if (artistItems.isNotEmpty()) {
+                        moodShelves.add(
+                            HomeShelf(
+                                title = "Fresh Drops • $primaryArtist",
+                                subtitle = "Latest $year releases from your top artist",
+                                items = artistItems.take(15),
+                            )
+                        )
+                    }
+
+                    val langItems = freshLangSongs.filterIsInstance<SearchResult.Track>().map { tr ->
+                        ShelfItem(
+                            title = tr.song.title,
+                            subtitle = tr.song.artist,
+                            thumbnailUrl = tr.song.thumbnailUrl,
+                            videoId = tr.song.videoId,
+                            browseId = null,
+                        )
+                    }
+                    if (langItems.isNotEmpty()) {
+                        moodShelves.add(
+                            HomeShelf(
+                                title = "New in $primaryLang",
+                                subtitle = "Fresh drops & trending new releases",
+                                items = langItems.take(15),
+                            )
+                        )
+                    }
+
+                    moodShelves.addAll(officialShelves)
+
+                    if (selectedHomeMood.value == mood) {
+                        if (moodShelves.isNotEmpty()) {
+                            moodShelvesCache[mood] = moodShelves
+                            _home.value = UiState.Success(moodShelves)
+                        } else {
+                            _home.value = UiState.Error("No new releases found.")
+                        }
+                    }
+                    return@launch
+                } catch (_: Exception) {}
+            }
+
             val ytSongsJob = async {
                 YtMusicRepository.search(mood.query, SearchFilter.SONGS).getOrNull().orEmpty()
             }
@@ -2019,11 +2093,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val thirdArtist = personalArtists.getOrNull(2) ?: personalArtists.getOrNull(0) ?: "Diljit Dosanjh"
             val primaryLang = preferredLangs.getOrNull(0) ?: "Hindi"
             val secondaryLang = preferredLangs.getOrNull(1) ?: primaryLang
+            val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
 
-            // 3A. Artist Spotlight (Based on user's #1 favorite artist)
+            // 3-NEW. Dedicated "Fresh Drops For You" (Top priority new songs based on favorite artists)
             launch {
                 try {
-                    val query = "$primaryArtist songs hits"
+                    val pQuery = "$primaryArtist new song $currentYear"
+                    val sQuery = if (secondaryArtist != primaryArtist) "$secondaryArtist latest new release $currentYear" else "$primaryArtist latest tracks $currentYear"
+                    val pJob = async { YtMusicRepository.search(pQuery, SearchFilter.SONGS).getOrNull().orEmpty() }
+                    val sJob = async { YtMusicRepository.search(sQuery, SearchFilter.SONGS).getOrNull().orEmpty() }
+                    val pTracks = pJob.await().filterIsInstance<SearchResult.Track>()
+                    val sTracks = sJob.await().filterIsInstance<SearchResult.Track>()
+                    val combined = (pTracks + sTracks).distinctBy { it.song.videoId }
+                        .map { tr ->
+                            ShelfItem(
+                                title = tr.song.title,
+                                subtitle = tr.song.artist,
+                                thumbnailUrl = tr.song.thumbnailUrl,
+                                videoId = tr.song.videoId,
+                                browseId = null,
+                            )
+                        }
+                    if (combined.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
+                        val shelf = HomeShelf(
+                            title = "Fresh Drops For You",
+                            subtitle = "Latest releases from $primaryArtist & your favorites",
+                            items = combined.take(15),
+                        )
+                        publishHomeShelves(listOf(shelf), prepend = true)
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 3-LANG-NEW. Dedicated "New in $primaryLang" (Fresh drops in user's primary language)
+            launch {
+                try {
+                    val query = "New $primaryLang songs $currentYear latest releases"
                     YtMusicRepository.search(query, SearchFilter.SONGS).onSuccess { results ->
                         val items = results.filterIsInstance<SearchResult.Track>().map { tr ->
                             ShelfItem(
@@ -2036,8 +2141,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         if (items.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
                             val shelf = HomeShelf(
-                                title = "Featuring $primaryArtist",
-                                subtitle = "Handpicked based on your taste",
+                                title = "New in $primaryLang",
+                                subtitle = "Fresh drops & latest $currentYear $primaryLang releases",
                                 items = items.take(15),
                             )
                             publishHomeShelves(listOf(shelf), prepend = true)
@@ -2046,10 +2151,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (_: Exception) {}
             }
 
-            // 3B. Daily Mix 1: Top Favorites Mix (Personalized to primary artist & language)
+            // 3A. Latest from Primary Artist (Focusing on newly released music)
             launch {
                 try {
-                    val query = "$primaryArtist $primaryLang hits radio"
+                    val query = "$primaryArtist latest new songs $currentYear"
                     YtMusicRepository.search(query, SearchFilter.SONGS).onSuccess { results ->
                         val items = results.filterIsInstance<SearchResult.Track>().map { tr ->
                             ShelfItem(
@@ -2062,8 +2167,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         if (items.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
                             val shelf = HomeShelf(
-                                title = "Daily Mix 1 • $primaryArtist Mix",
-                                subtitle = "Curated for you • $primaryLang hits",
+                                title = "Latest from $primaryArtist",
+                                subtitle = "New drops & recent releases",
+                                items = items.take(15),
+                            )
+                            publishHomeShelves(listOf(shelf), prepend = true)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 3B. Daily Mix 1: Fresh Favorites Mix (Personalized to primary artist & language)
+            launch {
+                try {
+                    val query = "$primaryArtist $primaryLang latest new releases"
+                    YtMusicRepository.search(query, SearchFilter.SONGS).onSuccess { results ->
+                        val items = results.filterIsInstance<SearchResult.Track>().map { tr ->
+                            ShelfItem(
+                                title = tr.song.title,
+                                subtitle = tr.song.artist,
+                                thumbnailUrl = tr.song.thumbnailUrl,
+                                videoId = tr.song.videoId,
+                                browseId = null,
+                            )
+                        }
+                        if (items.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
+                            val shelf = HomeShelf(
+                                title = "Daily Mix 1 • Fresh $primaryArtist Mix",
+                                subtitle = "Curated for you • Latest $primaryLang tracks",
                                 items = items.take(15),
                             )
                             publishHomeShelves(listOf(shelf), prepend = true)
@@ -2101,7 +2232,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // 3D. Daily Mix 3: High Energy & Hits (Personalized to third artist & party vibe)
             launch {
                 try {
-                    val query = "$thirdArtist $primaryLang energetic party hits"
+                    val query = "$thirdArtist $primaryLang latest party hits $currentYear"
                     YtMusicRepository.search(query, SearchFilter.SONGS).onSuccess { results ->
                         val items = results.filterIsInstance<SearchResult.Track>().map { tr ->
                             ShelfItem(
@@ -2124,10 +2255,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (_: Exception) {}
             }
 
-            // 3E. Top Picks in Preferred Language
+            // 3E. Latest Drops in Preferred Language
             launch {
                 try {
-                    val query = "Top $primaryLang songs hits"
+                    val query = "Latest $primaryLang songs $currentYear"
                     YtMusicRepository.search(query, SearchFilter.SONGS).onSuccess { results ->
                         val items = results.filterIsInstance<SearchResult.Track>().map { tr ->
                             ShelfItem(
@@ -2140,8 +2271,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         if (items.isNotEmpty() && isCurrentHomeLoad(identity, generation)) {
                             val shelf = HomeShelf(
-                                title = "Top Picks in $primaryLang",
-                                subtitle = "Trending in your preferred language",
+                                title = "Latest $primaryLang Drops",
+                                subtitle = "Trending new releases in $primaryLang",
                                 items = items.take(15),
                             )
                             publishHomeShelves(listOf(shelf), prepend = true)
@@ -2182,7 +2313,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 launch {
                     try {
                         YtMusicRepository.homeSupplement(browseId).onSuccess { shelves ->
-                            if (isCurrentHomeLoad(identity, generation)) publishHomeShelves(shelves)
+                            if (isCurrentHomeLoad(identity, generation)) {
+                                val isNewReleases = browseId == "FEmusic_new_releases"
+                                publishHomeShelves(shelves, prepend = isNewReleases)
+                            }
                         }
                     } finally {
                         homeShelfRequestSettled(identity, generation)
