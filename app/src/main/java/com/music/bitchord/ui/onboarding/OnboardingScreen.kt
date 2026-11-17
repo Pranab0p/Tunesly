@@ -18,6 +18,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -82,6 +83,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -227,27 +229,14 @@ fun OnboardingScreen(
         }
     }
 
-    val palette = cyclingMeshPalette(WelcomeMeshPalettes)
-
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
             .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } },
     ) {
-        // Adaptive background: API 31+ uses hardware RenderEffect mesh that settles;
-        // API <= 30 (Android 11) uses zero-cost hardware gradient to prevent GPU jank.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            MeshGradientBackground(
-                palette = palette,
-                trackKey = currentStep.ordinal,
-                continuous = false,
-                driftMillis = 3_500,
-                colorFadeMillis = 900,
-            )
-        } else {
-            Android11AmbientBackground(currentStep = currentStep)
-        }
+        // High-performance hardware ambient background: zero GPU blur passes, locked 60/120 FPS
+        HardwareAmbientBackground(currentStep = currentStep)
 
         // Subtle gradient overlay for clean contrast
         Box(
@@ -335,26 +324,33 @@ fun OnboardingScreen(
  * Android 11 (API 30) zero-cost ambient background. Eliminates GPU lag on older devices.
  */
 @Composable
-private fun Android11AmbientBackground(currentStep: OnboardingStep) {
+private fun HardwareAmbientBackground(currentStep: OnboardingStep) {
     val targetColors = when (currentStep) {
-        OnboardingStep.AUTH -> listOf(Color(0xFF1E1E38), Color(0xFF121224), Color.Black)
-        OnboardingStep.ARTISTS -> listOf(Color(0xFF281E38), Color(0xFF161224), Color.Black)
-        OnboardingStep.LANGUAGES -> listOf(Color(0xFF1E2838), Color(0xFF101924), Color.Black)
+        OnboardingStep.AUTH -> listOf(Color(0xFF2E1A47), Color(0xFF140D2B), Color.Black)
+        OnboardingStep.ARTISTS -> listOf(Color(0xFF381E2E), Color(0xFF1D0E1C), Color.Black)
+        OnboardingStep.LANGUAGES -> listOf(Color(0xFF1A2A38), Color(0xFF0D1824), Color.Black)
     }
-    val animTop by animateColorAsState(targetColors[0], tween(600), label = "a11Top")
-    val animMid by animateColorAsState(targetColors[1], tween(600), label = "a11Mid")
+    val animTop by animateColorAsState(targetColors[0], tween(500), label = "ambTop")
+    val animMid by animateColorAsState(targetColors[1], tween(500), label = "ambMid")
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    0f to animTop,
-                    0.5f to animMid,
-                    1f to Color.Black,
-                )
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        drawRect(
+            brush = Brush.verticalGradient(
+                0f to animTop,
+                0.45f to animMid,
+                1f to Color.Black,
+            )
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(animTop.copy(alpha = 0.45f), Color.Transparent),
+                center = Offset(size.width * 0.5f, size.height * 0.15f),
+                radius = size.width * 0.85f,
             ),
-    )
+            radius = size.width * 0.85f,
+            center = Offset(size.width * 0.5f, size.height * 0.15f),
+        )
+    }
 }
 
 /**
@@ -375,18 +371,6 @@ private fun AuthStepView(
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    // Breathing animation applied via graphicsLayer (zero recomposition)
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val logoGlowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.85f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "logoGlow",
-    )
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -1119,6 +1103,9 @@ private fun ArtistGridItem(
             .joinToString("")
             .uppercase()
     }
+    val gradientBrush = remember(artist.colorStart, artist.colorEnd) {
+        Brush.linearGradient(listOf(Color(artist.colorStart), Color(artist.colorEnd)))
+    }
 
     Column(
         modifier = Modifier
@@ -1142,11 +1129,7 @@ private fun ArtistGridItem(
                     .size(72.dp)
                     .clip(CircleShape)
                     .drawBehind {
-                        drawCircle(
-                            Brush.linearGradient(
-                                listOf(Color(artist.colorStart), Color(artist.colorEnd)),
-                            ),
-                        )
+                        drawCircle(gradientBrush)
                     }
                     .border(
                         width = if (isSelected) 2.5.dp else 1.dp,

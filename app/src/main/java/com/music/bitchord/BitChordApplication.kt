@@ -170,7 +170,7 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         initLastfm()
         // The public "apps open right now" count; see Presence.
         com.music.bitchord.data.presence.AndroidPresence.install(this)
-        backgroundInit.join()
+        // Background initialization runs asynchronously without stalling main thread startup
     }
 
     /**
@@ -224,18 +224,18 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
             }
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.20)
+                    .maxSizePercent(context, 0.25)
+                    .strongReferencesEnabled(true)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(100L * 1024 * 1024)
+                    .maxSizeBytes(150L * 1024 * 1024)
                     .build()
             }
-            // Covers arriving with a hard cut read as the list flickering as
-            // it scrolls; a short fade reads as them developing.
-            .crossfade(200)
+            // Snappy 100ms fade for fast visual response without scroll hitching
+            .crossfade(100)
             .build()
 
     private fun initLastfm() {

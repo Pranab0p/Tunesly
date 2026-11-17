@@ -2090,7 +2090,11 @@ internal fun LyricsPanel(
         ),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        itemsIndexed(lines) { index, line ->
+        itemsIndexed(
+            items = lines,
+            key = { index, line -> "lyric_${line.timeMs}_${index}" },
+            contentType = { _, _ -> "lyric_line" },
+        ) { index, line ->
             if (!isSynced && isGeniusSectionHeader(line.text)) {
                 val sectionTitle = line.text.removePrefix("[").removeSuffix("]").trim()
                 Column(

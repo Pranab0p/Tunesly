@@ -2802,7 +2802,7 @@ private fun BitChordApp(
                         } else if (pageRoute == AppRoute.Discord) {
                             DiscordScreen(
                                 song = player.song,
-                                positionMs = player.position.positionMs,
+                                position = player.position,
                                 durationMs = player.durationMs,
                                 onOpenLogin = { showDiscordLogin = true },
                                 onOpenDialog = { discordDialog = it },

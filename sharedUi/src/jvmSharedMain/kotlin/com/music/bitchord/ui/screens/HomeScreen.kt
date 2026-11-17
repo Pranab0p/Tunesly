@@ -327,7 +327,11 @@ private fun RecentShelf(
                     contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    items(shelf.items.chunked(RECENT_TRACKS_PER_COLUMN)) { column ->
+                    items(
+                        items = shelf.items.chunked(RECENT_TRACKS_PER_COLUMN),
+                        key = { column -> column.joinToString(";") { it.videoId ?: it.browseId ?: it.title } },
+                        contentType = { "recent_col" },
+                    ) { column ->
                         Column(Modifier.width(columnWidth)) {
                             column.forEach { item ->
                                 RecentTrackRow(
@@ -349,7 +353,11 @@ private fun RecentShelf(
                     contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    items(shelf.items) { item ->
+                    items(
+                        items = shelf.items,
+                        key = { it.videoId ?: it.browseId ?: it.title },
+                        contentType = { "hero_card" },
+                    ) { item ->
                         HeroCard(
                             item = item,
                             onClick = { onItemClick(item) },
@@ -777,7 +785,11 @@ private fun HeroShelf(
                 contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                items(shelf.items) { item ->
+                items(
+                    items = shelf.items,
+                    key = { it.videoId ?: it.browseId ?: it.title },
+                    contentType = { "hero_card" },
+                ) { item ->
                     HeroCard(
                         item = item,
                         onClick = { onItemClick(item) },
@@ -876,7 +888,11 @@ internal fun Shelf(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             leadingCard?.let { card -> item(key = "leading") { card() } }
-            items(shelf.items) { item ->
+            items(
+                items = shelf.items,
+                key = { it.videoId ?: it.browseId ?: it.title },
+                contentType = { "shelf_card" },
+            ) { item ->
                 ShelfCard(
                     item = item,
                     onClick = { onItemClick(item) },
