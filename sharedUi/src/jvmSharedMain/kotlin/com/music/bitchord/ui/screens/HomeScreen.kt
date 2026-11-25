@@ -572,7 +572,7 @@ private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
                 .fillMaxWidth()
                 .padding(bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Icon(
                 painter = painterResource(Res.drawable.ic_logo),
