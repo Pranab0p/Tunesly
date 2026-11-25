@@ -129,6 +129,7 @@ import com.music.bitchord.auth.SpotifyLoginScreen
 import com.music.bitchord.auth.WebSessionMode
 import com.music.bitchord.auth.YtMusicLoginScreen
 import com.music.bitchord.data.AppUpdateChecker
+import com.music.bitchord.data.RemoteConfigManager
 import com.music.bitchord.data.LocalMediaRepository
 import com.music.bitchord.data.listentogether.JamInviteLink
 import com.music.bitchord.data.listentogether.ListenTogether
@@ -257,6 +258,8 @@ import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.ui.components.ListenBrainzTokenAlert
 import com.music.bitchord.ui.components.MiniPlayer
+import com.music.bitchord.ui.components.TuneslyDynamicIsland
+import com.music.bitchord.ui.components.RemoteConfigBanner
 import com.music.bitchord.ui.components.QueueActionNotice
 import com.music.bitchord.ui.components.QueueActionNoticeHost
 import com.music.bitchord.ui.components.TopBarAccountButton
@@ -497,6 +500,13 @@ private fun BitChordApp(
     // solid (see [Modifier.liquidGlass]) and the whole-page layer recording
     // below goes with them, which is the part that costs a draw pass.
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val dynamicIslandEnabled by AppSettings.dynamicIsland.collectAsStateWithLifecycle()
+    val remoteConfig by RemoteConfigManager.config.collectAsStateWithLifecycle()
+    val dismissedAnnouncementAt by RemoteConfigManager.dismissedAt.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) {
+        RemoteConfigManager.init(context)
+        RemoteConfigManager.refresh()
+    }
     val glassSamplesBackdrop = glassActive && !reduceDynamicBlur
     // What folds [GlassNavBar] between its expanded and inline shapes. Held here
     // rather than inside the bar because the page's scroll is what drives it,
@@ -3994,8 +4004,36 @@ private fun BitChordApp(
                     )
                 }
             }
-
         }
+
+        val islandVisible = dynamicIslandEnabled &&
+            remoteConfig.dynamicIslandGlobalEnabled &&
+            !(showNowPlaying && playerSong != null)
+
+        if (!(showNowPlaying && playerSong != null)) {
+            RemoteConfigBanner(
+                config = remoteConfig,
+                dismissedAt = dismissedAnnouncementAt,
+                hasDynamicIslandVisible = islandVisible && player.song != null,
+                onDismiss = RemoteConfigManager::dismissAnnouncement,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        }
+
+        TuneslyDynamicIsland(
+            song = player.song,
+            isPlaying = player.isPlaying,
+            visible = islandVisible,
+            onPlayPause = { togglePlayPause() },
+            onNext = { controller?.seekToNextMediaItem() },
+            onPrevious = { controller?.seekToPrevious() },
+            onOpenPlayer = if (reducePlayerMotion) {
+                { showNowPlaying = true }
+            } else {
+                playerSheetMotion::open
+            },
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
 
         val playerRaised = showNowPlaying && playerSong != null
 
@@ -5576,6 +5614,7 @@ private fun FrostedMenuPanel(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val dynamicIslandEnabled by AppSettings.dynamicIsland.collectAsStateWithLifecycle()
     val shape = MaterialTheme.shapes.extraLarge
     Box(
         Modifier

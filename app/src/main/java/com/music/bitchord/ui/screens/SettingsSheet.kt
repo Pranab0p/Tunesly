@@ -220,6 +220,7 @@ fun SettingsScreen(
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val liquidGlass by AppSettings.liquidGlass.collectAsStateWithLifecycle()
     val liquidGlassSupported = isGlassSupported()
+    val dynamicIsland by AppSettings.dynamicIsland.collectAsStateWithLifecycle()
     val lyricsBlur by AppSettings.lyricsBlur.collectAsStateWithLifecycle()
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
     val canvasOverCellular by AppSettings.canvasOverCellular.collectAsStateWithLifecycle()
@@ -883,6 +884,24 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setLiquidGlass(!liquidGlass) },
+                )
+            }
+            row("Dynamic Island", "island", "capsule", "notch", "origin") {
+                SettingsRow(
+                    icon = Icons.Rounded.AutoAwesome,
+                    title = "Dynamic Island",
+                    subtitle = "Floating live music capsule at top of screen",
+                    trailing = {
+                        Switch(
+                            checked = dynamicIsland,
+                            onCheckedChange = AppSettings::setDynamicIsland,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { AppSettings.setDynamicIsland(!dynamicIsland) },
                 )
             }
             // Left out where the player won't honour it: a window too wide for
@@ -1611,27 +1630,19 @@ fun SettingsScreen(
         if (searchQuery.isBlank()) {
         Text(
             text = buildAnnotatedString {
-                append("bitchord $version  ")
+                append("Tunesly $version  ")
                 val linkStyles = TextLinkStyles(
                     style = SpanStyle(
                         color = MaterialTheme.colorScheme.primary,
                         textDecoration = TextDecoration.Underline,
                     ),
                 )
-                withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx/BitChord", linkStyles)) {
-                    append("GitHub")
-                }
-                append("  ")
-                withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx", linkStyles)) {
-                    append("Developer")
-                }
-                append("  ")
-                withLink(LinkAnnotation.Url("https://discord.gg/pDdKfrdHY6", linkStyles)) {
-                    append("Discord")
-                }
-                append("  ")
                 withLink(LinkAnnotation.Url("https://www.tunesly.online/", linkStyles)) {
                     append("Website")
+                }
+                append("  ")
+                withLink(LinkAnnotation.Url("https://www.instagram.com/pranab0p?knvt=MWdicGxjNWRtNmV1Yg==", linkStyles)) {
+                    append("Instagram")
                 }
                 append("\n~YouTube Music & Listen Together Backend")
             },

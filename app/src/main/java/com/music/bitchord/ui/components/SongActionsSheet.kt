@@ -4,7 +4,9 @@ import com.music.bitchord.R
 
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -273,25 +275,67 @@ fun SongActionsSheet(
         }
 
         if (!isOffline) {
-            ActionRow(
-                icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                label = if (liked) stringResource(R.string.remove_from_liked) else stringResource(R.string.like),
-                tint = if (liked) palette.accent else null,
-                accent = palette.accent,
-                onClick = onToggleLike,
-            )
+            if (!menu) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    QuickSheetTile(
+                        icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        label = if (liked) "Liked" else stringResource(R.string.like),
+                        active = liked,
+                        accent = palette.accent,
+                        onClick = onToggleLike,
+                        modifier = Modifier.weight(1f),
+                    )
+                    QuickSheetTile(
+                        icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                        label = "Playlist",
+                        active = false,
+                        accent = palette.accent,
+                        onClick = onAddToPlaylist,
+                        modifier = Modifier.weight(1f),
+                    )
+                    QuickSheetTile(
+                        icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
+                        label = "Play Next",
+                        active = false,
+                        accent = palette.accent,
+                        onClick = onPlayNext,
+                        modifier = Modifier.weight(1f),
+                    )
+                    QuickSheetTile(
+                        icon = if (onShare != null) Icons.Rounded.Share else Icons.Rounded.Radio,
+                        label = if (onShare != null) "Share" else "Radio",
+                        active = false,
+                        accent = palette.accent,
+                        onClick = onShare ?: onStartRadio,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            } else {
+                ActionRow(
+                    icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                    label = if (liked) stringResource(R.string.remove_from_liked) else stringResource(R.string.like),
+                    tint = if (liked) palette.accent else null,
+                    accent = palette.accent,
+                    onClick = onToggleLike,
+                )
+                ActionRow(
+                    icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                    label = stringResource(R.string.add_to_playlist),
+                    accent = palette.accent,
+                    onClick = onAddToPlaylist,
+                )
+            }
             ActionRow(
                 icon = if (disliked) Icons.Rounded.ThumbDown else Icons.Rounded.ThumbDownOffAlt,
                 label = if (disliked) stringResource(R.string.undo_dislike) else stringResource(R.string.dislike),
                 tint = if (disliked) palette.accent else null,
                 accent = palette.accent,
                 onClick = onToggleDislike,
-            )
-            ActionRow(
-                icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
-                label = stringResource(R.string.add_to_playlist),
-                accent = palette.accent,
-                onClick = onAddToPlaylist,
             )
             onRemoveFromPlaylist?.let {
                 ActionRow(
@@ -973,4 +1017,48 @@ internal fun SheetHeading(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 16.dp, bottom = 4.dp),
     )
+}
+
+@Composable
+private fun QuickSheetTile(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier = modifier
+            .clip(shape)
+            .background(
+                if (active) accent.copy(alpha = 0.22f)
+                else Color.White.copy(alpha = 0.08f),
+            )
+            .border(
+                width = 1.dp,
+                color = if (active) accent.copy(alpha = 0.55f)
+                else Color.White.copy(alpha = 0.10f),
+                shape = shape,
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (active) accent else Color.White,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) accent else Color.White.copy(alpha = 0.9f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }

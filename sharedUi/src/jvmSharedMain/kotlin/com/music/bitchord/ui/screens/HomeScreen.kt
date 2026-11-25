@@ -10,6 +10,7 @@ import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import com.music.bitchord.ui.components.longPressMenuClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,13 +54,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Storage
 import com.music.bitchord.ui.icons.BitChordIcons
 import coil3.compose.AsyncImage
@@ -72,6 +77,7 @@ import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.UiState
+import java.util.Calendar
 import java.util.Locale
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.settings.LibraryViewType
@@ -206,6 +212,27 @@ fun HomeScreen(
                     if (recentlyPlayedLoading) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                     }
+                    val quickShelf = state.data.firstOrNull { it.items.size >= 4 } ?: state.data.firstOrNull()
+                    if (quickShelf != null && quickShelf.items.size >= 2 && !recentlyPlayedLoading) {
+                        item(key = "home:jump-back-in") {
+                            JumpBackInQuickGrid(
+                                items = quickShelf.items.take(4),
+                                currentSong = currentSong,
+                                isPlaying = isPlaying,
+                                onItemClick = { item -> onItemClick(item, quickShelf.title) },
+                                onItemLongPress = onItemLongPress,
+                                onSurpriseMe = {
+                                    val pool = state.data.flatMap { s -> s.items.map { it to s.title } }
+                                        .filter { (it, _) -> it.videoId != null && it.videoId != currentSong?.videoId }
+                                    val pick = pool.randomOrNull()
+                                        ?: state.data.firstOrNull()?.let { s -> s.items.firstOrNull()?.to(s.title) }
+                                    if (pick != null) {
+                                        onItemClick(pick.first, pick.second)
+                                    }
+                                },
+                            )
+                        }
+                    }
                     // The loading skeleton already owns the hero slot. Until
                     // Recently Played lands, every real shelf must retain its
                     // compact-card layout instead of briefly becoming a hero.
@@ -282,6 +309,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                 )
             } else if (index == 0 && firstIsHero) {
                 HeroShelf(
+                    shelf = shelf,
+                    onItemClick = openItem,
+                    onItemLongPress = onItemLongPress,
+                    currentSong = currentSong,
+                    isPlaying = isPlaying,
+                )
+            } else if (index == 1) {
+                VinylShelf(
                     shelf = shelf,
                     onItemClick = openItem,
                     onItemLongPress = onItemLongPress,
@@ -522,16 +557,51 @@ fun CompactTrackRow(
 private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
     val style = MaterialTheme.typography.displayLarge
     val logoHeight = with(LocalDensity.current) { (style.fontSize * LOGO_TO_FONT).toDp() }
+    val timeVibe = remember {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        when (hour) {
+            in 5..11 -> "Morning Boost ☀️"
+            in 12..16 -> "Afternoon Flow 🌤️"
+            in 17..21 -> "Evening Drive 🌆"
+            else -> "Late Night Lofi 🌙"
+        }
+    }
     Column(modifier = modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp)) {
-        Icon(
-            painter = painterResource(Res.drawable.ic_logo),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onBackground,
+        Row(
             modifier = Modifier
-                .padding(bottom = 14.dp)
-                .height(logoHeight)
-                .aspectRatio(LOGO_ASPECT),
-        )
+                .fillMaxWidth()
+                .padding(bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Icon(
+                painter = painterResource(Res.drawable.ic_logo),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier
+                    .height(logoHeight)
+                    .aspectRatio(LOGO_ASPECT),
+            )
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                        shape = CircleShape,
+                    )
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = timeVibe,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
+            }
+        }
         Text(
             text = title,
             style = style,
@@ -1146,6 +1216,301 @@ private fun HomeMoodChipsRow(
                     maxLines = 1,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Compact 2x2 quick-access grid at the top of Home for instant 1-tap replay.
+ */
+@Composable
+private fun JumpBackInQuickGrid(
+    items: List<ShelfItem>,
+    currentSong: Song?,
+    isPlaying: Boolean,
+    onItemClick: (ShelfItem) -> Unit,
+    onItemLongPress: ((ShelfItem) -> Unit)?,
+    onSurpriseMe: () -> Unit,
+) {
+    val isCurrent = items.playingItemMatcher(currentSong)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = PAGE_GUTTER)
+            .padding(top = 6.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = "Jump Back In",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Row(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                        shape = CircleShape,
+                    )
+                    .clickable(onClick = onSurpriseMe)
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Shuffle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(13.dp),
+                )
+                Text(
+                    text = "Surprise Me",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        items.chunked(2).forEach { rowItems ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                rowItems.forEach { item ->
+                    val active = isCurrent(item)
+                    val shape = RoundedCornerShape(12.dp)
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp)
+                            .clip(shape)
+                            .background(
+                                if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+                                else Color.White.copy(alpha = 0.07f),
+                                shape = shape,
+                            )
+                            .longPressMenuClickable(
+                                onClick = { onItemClick(item) },
+                                onLongClick = onItemLongPress?.let { { it(item) } },
+                            )
+                            .padding(end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(54.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AsyncImage(
+                                model = item.thumbnailUrl.artworkAt(ROW_ART_PX),
+                                contentDescription = item.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            if (active && isPlaying) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.45f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    SearchPlayingBars()
+                                }
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                if (rowItems.size == 1) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Signature Tunesly Vinyl Sleeve shelf: album cover with a glossy vinyl record peeking out.
+ */
+@Composable
+private fun VinylShelf(
+    shelf: HomeShelf,
+    onItemClick: (ShelfItem) -> Unit,
+    onItemLongPress: ((ShelfItem) -> Unit)?,
+    currentSong: Song?,
+    isPlaying: Boolean,
+) {
+    val isCurrentItem = shelf.items.playingItemMatcher(currentSong)
+    Column(Modifier.padding(bottom = 26.dp)) {
+        Column(Modifier.padding(horizontal = PAGE_GUTTER, vertical = 10.dp)) {
+            Text(
+                text = shelf.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (shelf.subtitle.isNotBlank()) {
+                Text(
+                    text = shelf.subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        ShelfRow(
+            contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            items(
+                items = shelf.items,
+                key = { it.videoId ?: it.browseId ?: it.title },
+                contentType = { "vinyl_card" },
+            ) { item ->
+                VinylSleeveCard(
+                    item = item,
+                    isCurrent = isCurrentItem(item),
+                    isPlaying = isCurrentItem(item) && isPlaying,
+                    onClick = { onItemClick(item) },
+                    onLongPress = onItemLongPress?.let { { it(item) } },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VinylSleeveCard(
+    item: ShelfItem,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)?,
+) {
+    val sleeveSize = 128.dp
+    Column(
+        modifier = Modifier
+            .width(154.dp)
+            .longPressMenuClickable(
+                onClick = onClick,
+                onLongClick = onLongPress,
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(154.dp)
+                .height(sleeveSize),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            // Peeking Vinyl Disc on the right
+            Box(
+                modifier = Modifier
+                    .offset(x = 26.dp)
+                    .size(sleeveSize - 8.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.radialGradient(
+                            listOf(
+                                Color(0xFF282832),
+                                Color(0xFF0E0E13),
+                                Color(0xFF1F1F27),
+                                Color(0xFF09090D),
+                            ),
+                        ),
+                    )
+                    .border(1.dp, Color.White.copy(alpha = 0.14f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF0B0B0F)),
+                    )
+                }
+            }
+
+            // Album Sleeve Cover
+            val sleeveShape = RoundedCornerShape(14.dp)
+            Box(
+                modifier = Modifier
+                    .size(sleeveSize)
+                    .clip(sleeveShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .border(
+                        width = if (isCurrent) 1.5.dp else 1.dp,
+                        color = if (isCurrent) MaterialTheme.colorScheme.primary
+                        else Color.White.copy(alpha = 0.10f),
+                        shape = sleeveShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                AsyncImage(
+                    model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (isCurrent && isPlaying) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        SearchPlayingBars()
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (item.subtitle.isNotBlank()) {
+            Text(
+                text = item.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

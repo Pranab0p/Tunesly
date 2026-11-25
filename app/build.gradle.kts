@@ -120,7 +120,7 @@ android {
         }
         create("prod") {
             dimension = "env"
-            // Matches defaultConfig â€” this is the package already shipped/installed.
+            // Matches defaultConfig — this is the package already shipped/installed.
         }
     }
 

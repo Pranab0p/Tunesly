@@ -73,10 +73,13 @@ object AppUpdateChecker {
     private var downloadCancelled = false
 
     suspend fun check() = withContext(Dispatchers.IO) {
-        // 1. Try Tunesly Cloud VPS endpoint first
+        // 1. Query Tunesly Cloud VPS endpoints (authoritative)
         for (endpoint in UPDATE_ENDPOINTS) {
             try {
-                val req = Request.Builder().url(endpoint).build()
+                val req = Request.Builder()
+                    .url(endpoint)
+                    .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
+                    .build()
                 val body = Http.client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) resp.body?.string() else null
                 }
@@ -97,30 +100,17 @@ object AppUpdateChecker {
                         }
                         val relUrl = obj["releaseUrl"]?.jsonPrimitive?.contentOrNull ?: "https://tunesly.online"
                         val notes = obj["notes"]?.jsonPrimitive?.contentOrNull
-                        if (ver != null && isNewer(ver, BuildConfig.VERSION_NAME)) {
-                            _available.value = UpdateInfo(ver, relUrl, apk, notes)
+                        if (ver != null) {
+                            _available.value = if (isNewer(ver, BuildConfig.VERSION_NAME)) {
+                                UpdateInfo(ver, relUrl, apk, notes)
+                            } else {
+                                null
+                            }
                             return@withContext
                         }
                     }
                 }
             } catch (_: Exception) {}
-        }
-
-        // 2. Fallback to GitHub Releases if needed
-        runCatching {
-            val request = Request.Builder().url(GITHUB_RELEASE_URL).build()
-            val body = Http.client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.string()
-            } ?: return@runCatching
-            val release = json.parseToJsonElement(body) as? JsonObject ?: return@runCatching
-            val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull ?: return@runCatching
-            val url = release["html_url"]?.jsonPrimitive?.contentOrNull ?: return@runCatching
-            val apkUrl = apkAssetUrl(release)
-            val notes = release["body"]?.jsonPrimitive?.contentOrNull
-            val latest = tag.removePrefix("v")
-            if (isNewer(latest, BuildConfig.VERSION_NAME)) {
-                _available.value = UpdateInfo(latest, url, apkUrl, notes)
-            }
         }
     }
 
