@@ -5,6 +5,11 @@ import com.music.bitchord.ui.AppUi
 import com.music.bitchord.sharedui.resources.*
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.DrawableResource
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.platform.LocalDensity
@@ -50,6 +55,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -153,6 +159,7 @@ fun HomeScreen(
     isPlaying: Boolean = false,
     selectedMood: HomeMood = HomeMood.ALL,
     onMoodSelect: ((HomeMood) -> Unit)? = null,
+    onOpenVibeFeed: () -> Unit = {},
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -177,7 +184,7 @@ fun HomeScreen(
             },
         ) {
             if (title != null) {
-                item { HomeTitle(title) }
+                item { HomeTitle(title, onOpenVibeFeed = onOpenVibeFeed) }
             }
             if (onMoodSelect != null) {
                 item(key = "home:mood-chips") {
@@ -554,7 +561,11 @@ fun CompactTrackRow(
  * system font scale.
  */
 @Composable
-private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
+private fun HomeTitle(
+    title: String,
+    onOpenVibeFeed: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val style = MaterialTheme.typography.displayLarge
     val logoHeight = with(LocalDensity.current) { (style.fontSize * LOGO_TO_FONT).toDp() }
     val timeVibe = remember {
@@ -566,6 +577,16 @@ private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
             else -> "Late Night Lofi 🌙"
         }
     }
+    val pulseTransition = rememberInfiniteTransition(label = "vibe_pill_glow")
+    val glowAlpha by pulseTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "glow_alpha",
+    )
     Column(modifier = modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp)) {
         Row(
             modifier = Modifier
@@ -584,20 +605,27 @@ private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
             )
             Box(
                 modifier = Modifier
+                    .shadow(
+                        elevation = (10f * glowAlpha).dp,
+                        shape = CircleShape,
+                        ambientColor = MaterialTheme.colorScheme.primary,
+                        spotColor = MaterialTheme.colorScheme.primary,
+                    )
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f + 0.08f * glowAlpha))
                     .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                        width = 1.2.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha),
                         shape = CircleShape,
                     )
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .clickable(onClick = onOpenVibeFeed)
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
             ) {
                 Text(
                     text = timeVibe,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
                     maxLines = 1,
                 )
             }

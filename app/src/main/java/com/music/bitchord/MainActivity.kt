@@ -178,6 +178,7 @@ import com.music.bitchord.ui.screens.ListenTogetherScreen
 import com.music.bitchord.ui.screens.PartyServerEditor
 import com.music.bitchord.ui.screens.SignatureApiEditor
 import com.music.bitchord.ui.screens.SettingsScreen
+import com.music.bitchord.ui.screens.VibeFeedScreen
 import com.music.bitchord.ui.screens.SourceEditorAlert
 import com.music.bitchord.ui.screens.SourcesScreen
 import com.music.bitchord.data.sources.TrackMatcher
@@ -520,6 +521,7 @@ private fun BitChordApp(
      * permanent pane.
      */
     var showNowPlaying by remember { mutableStateOf(false) }
+    var showVibeFeed by rememberSaveable { mutableStateOf(false) }
     // Where the two ends of opening and closing the player meet: the mini
     // player's cover reports itself here, the sheet its offset, and the player
     // flies its artwork between them — see [PlayerDock].
@@ -3170,6 +3172,7 @@ private fun BitChordApp(
                                 onSignIn = { webSession = WebSessionMode.SIGN_IN },
                                 selectedMood = selectedHomeMood,
                                 onMoodSelect = viewModel::setHomeMood,
+                                onOpenVibeFeed = { showVibeFeed = true },
                                 onItemClick = { item, shelfTitle ->
                                     val song = shelfSong(item)
                                     // Hoisted because ShelfItem lives in :shared, and
@@ -4034,6 +4037,84 @@ private fun BitChordApp(
             },
             modifier = Modifier.align(Alignment.TopCenter),
         )
+
+        AnimatedVisibility(
+            visible = showVibeFeed,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        ) {
+            val shelves = (homeState as? UiState.Success)?.data.orEmpty()
+            val forYouSongs = remember(shelves) {
+                shelves.flatMap { it.items }.mapNotNull { shelfSong(it) }.distinctBy { it.videoId }
+            }
+            val trendingSongs = remember(shelves) {
+                shelves.drop(1).flatMap { it.items }.mapNotNull { shelfSong(it) }.distinctBy { it.videoId }
+                    .ifEmpty { forYouSongs.reversed() }
+            }
+            VibeFeedScreen(
+                forYouSongs = forYouSongs,
+                trendingSongs = trendingSongs,
+                currentSong = player.song,
+                isPlaying = player.isPlaying,
+                positionMs = controller?.currentPosition ?: 0L,
+                durationMs = player.durationMs,
+                shuffleEnabled = shuffleEnabled,
+                repeatMode = player.repeatMode,
+                onPlaySong = { song ->
+                    playRadio(song, QueueSource("Vibe Feed", PlaybackSourceType.HOME))
+                },
+                onPlayPause = { togglePlayPause() },
+                onNext = { controller?.seekToNextMediaItem() },
+                onPrevious = { controller?.seekToPrevious() },
+                onSeek = { pos -> controller?.seekTo(pos) },
+                onToggleShuffle = { controller?.toggleShuffle() },
+                onToggleRepeat = {
+                    controller?.let {
+                        val next = when (it.repeatMode) {
+                            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                            else -> Player.REPEAT_MODE_OFF
+                        }
+                        AppSettings.setRepeatMode(next)
+                        it.repeatMode = next
+                    }
+                },
+                onToggleLike = { song ->
+                    viewModel.toggleLike(song.videoId)
+                    val isLiked = viewModel.likeStatusOf(song.videoId) == LikeStatus.LIKE
+                    if (isLiked) {
+                        com.music.bitchord.data.spotify.LocalPlaylistStore.addSongToPlaylist("liked_songs", song)
+                    } else {
+                        com.music.bitchord.data.spotify.LocalPlaylistStore.removeSongFromPlaylist("liked_songs", song.videoId)
+                    }
+                },
+                onOpenPlaylistPicker = { song -> playlistTarget = song },
+                onDownload = { song -> downloadSong(song) },
+                onShare = { song ->
+                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(
+                            android.content.Intent.EXTRA_TEXT,
+                            "Listening to ${song.title} by ${song.artist} on Tunesly!\nhttps://music.youtube.com/watch?v=${song.videoId}",
+                        )
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Song"))
+                },
+                onMoreActions = { song -> songActions = song },
+                onOpenFullPlayer = {
+                    showVibeFeed = false
+                    if (reducePlayerMotion) showNowPlaying = true else playerSheetMotion.open()
+                },
+                onOpenSearch = {
+                    navigator.clear()
+                    viewModel.closeMoodGenre()
+                    selectedTab = TAB_SEARCH
+                    viewModel.onQueryChange("")
+                    searchFocusRequested = true
+                },
+                onClose = { showVibeFeed = false },
+            )
+        }
 
         val playerRaised = showNowPlaying && playerSong != null
 
